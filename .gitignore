@@ -1,10 +1,9 @@
-﻿# Build output
-dist/
-.astro/
+# Dependencies and build output
 node_modules/
+dist/
 
-# Design-phase review artefact (regenerate with: python design/build-review.py)
-design/review.html
+# Test subjects — cloned repos, not ours to commit
+fixtures/
 
 # OS / editor noise
 Thumbs.db

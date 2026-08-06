@@ -1,18 +1,20 @@
 {
-  "name": "layerfix",
-  "version": "1.0.0",
+  "name": "eriksen",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "layerfix.com — a structured settings and failure database for 3D printing",
+  "description": "Shows you what software you didn't write actually does, and tells you when that changes.",
+  "bin": { "eriksen": "./dist/cli.js" },
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview",
-    "check": "astro check"
+    "dev": "tsx src/cli.ts",
+    "build": "tsc",
+    "scan": "tsx src/cli.ts scan"
   },
   "dependencies": {
-    "@astrojs/rss": "^4.0.19",
-    "@astrojs/sitemap": "^3.7.3",
-    "astro": "^7.2.0"
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.20.6"
   }
 }

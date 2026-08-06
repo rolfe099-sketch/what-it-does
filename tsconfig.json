@@ -1,9 +1,18 @@
 {
-  "extends": "astro/tsconfigs/base",
-  "include": [".astro/types.d.ts", "**/*"],
-  "exclude": ["dist"],
   "compilerOptions": {
-    "resolveJsonModule": true,
-    "allowJs": true
-  }
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": false,
+    "sourceMap": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "fixtures"]
 }
