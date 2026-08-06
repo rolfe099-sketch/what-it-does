@@ -1,0 +1,8 @@
+﻿# Build output
+design/review.html
+
+# OS / editor noise
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/

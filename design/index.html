@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agentmetrics.org — independent measurement of AI agent behaviour</title>
+<meta name="description" content="Independent, reproducible measurement of what AI agents actually do. Every study publishes its harness, its raw session transcripts, and its limitations.">
+<link rel="preload" href="./fonts/instrument-serif-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="./fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="./tokens.css">
+<link rel="stylesheet" href="./base.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="canvas site-header__inner">
+    <a class="wordmark" href="/">
+      <svg class="wordmark__glyph" width="22" height="18" viewBox="0 0 22 18" aria-hidden="true" fill="none">
+        <path d="M1 12v5M6 7v10M11 1v16M16 7v10M21 12v5" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      agentmetrics<span class="wordmark__tld">.org</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="/studies/" aria-current="page">Studies</a>
+      <a href="/harness/">Harness</a>
+      <a href="/method/">Method</a>
+      <a href="/data/">Data</a>
+      <button class="theme-toggle" type="button" id="theme-toggle" aria-label="Switch to dark theme">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+          <circle cx="7.5" cy="7.5" r="3.4" stroke="currentColor" stroke-width="1.3"/>
+          <path d="M7.5 1v1.6M7.5 12.4V14M14 7.5h-1.6M2.6 7.5H1M12.1 2.9l-1.1 1.1M4 11l-1.1 1.1M12.1 12.1L11 11M4 4L2.9 2.9"
+                stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="canvas">
+
+    <!-- ── Opening statement ────────────────────────────────────────────── -->
+    <section class="spread">
+      <div class="stack-md">
+        <p class="eyebrow">Independent measurement · Established 2026</p>
+        <h1 class="title">Everyone is shipping tools for AI&nbsp;agents. Almost nobody has checked whether the agent picks&nbsp;them&nbsp;up.</h1>
+        <p class="lead">We measure what agents actually do, not what the documentation says they should. Every study publishes its harness, its raw session transcripts, and the reasons you should doubt it.</p>
+      </div>
+
+      <aside class="rail">
+        <div class="note">
+          <span class="note__label">Current record</span>
+          <dl>
+            <dt>Studies</dt><dd>1</dd>
+            <dt>Sessions</dt><dd>27</dd>
+            <dt>Models</dt><dd>1</dd>
+            <dt>Updated</dt><dd>2026-08-06</dd>
+          </dl>
+        </div>
+        <div class="note note--caveat">
+          <span class="note__label">Read this first</span>
+          This is a new record with a small sample. One model family, nine scenarios, twenty-seven sessions. Treat every figure here as provisional until it has been re-run.
+        </div>
+      </aside>
+    </section>
+
+    <div class="tick-rule" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+
+    <!-- ── Headline finding ─────────────────────────────────────────────── -->
+    <section class="spread">
+      <div class="stack-md">
+        <p class="eyebrow">Study 001 · Finding</p>
+
+        <div class="figure-hero">
+          <span class="figure-hero__value">22<span class="figure-hero__unit">%</span></span>
+          <p class="figure-hero__caption">of sessions invoked a tool whose instructions lived in an optional file the agent had to choose to open.</p>
+        </div>
+
+        <div class="chart">
+          <div class="chart__frame">
+            <p class="chart__title">Tool adoption by instruction placement</p>
+            <p class="chart__subtitle">Share of sessions in which the agent invoked the tool at least once</p>
+
+            <div class="bar-row">
+              <div class="bar-row__head">
+                <span class="bar-row__label">Optional skill file</span>
+                <span class="bar-row__value">22%</span>
+              </div>
+              <div class="bar-row__track">
+                <div class="bar-row__fill" style="width:22%; --bar-colour: var(--series-3);"></div>
+              </div>
+              <p class="bar-row__meta">6 of 27 sessions</p>
+            </div>
+
+            <div class="bar-row">
+              <div class="bar-row__head">
+                <span class="bar-row__label">Always-read context file <code>CLAUDE.md</code></span>
+                <span class="bar-row__value">100%</span>
+              </div>
+              <div class="bar-row__track">
+                <div class="bar-row__fill" style="width:100%; --bar-colour: var(--series-1);"></div>
+              </div>
+              <p class="bar-row__meta">27 of 27 sessions · 0 false positives</p>
+            </div>
+
+            <p class="chart__caption">n = 27 sessions per condition, one model family (Claude), nine task scenarios. Figures are counts of sessions, not of tool calls. <a href="/studies/001-instruction-placement/">Full method, raw transcripts and limitations →</a></p>
+          </div>
+        </div>
+
+        <p>Agents did not fail to use the tool because the description was unclear. They read a one-line summary, decided it was not worth opening, and moved on. Moving the identical text into the file the agent always reads took adoption to every session, with nothing else changed.</p>
+
+        <p>If that result holds beyond this sample, a large amount of agent tooling currently shipping is never being called at all — and the authors have no way to find out.</p>
+      </div>
+
+      <aside class="rail">
+        <div class="note note--caveat">
+          <span class="note__label">What this does not show</span>
+          One model family. Nine scenarios. No other MCP servers tested. We do not yet know whether this generalises to other agents, other tools, or longer sessions.
+        </div>
+        <div class="note">
+          <span class="note__label">Reproduce it</span>
+          The harness is MIT licensed and needs no changes to the server under test. It reads session transcripts only.
+        </div>
+      </aside>
+    </section>
+
+    <div class="tick-rule" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+
+    <!-- ── Studies ──────────────────────────────────────────────────────── -->
+    <section class="spread">
+      <div>
+        <h2 class="section-heading">Studies</h2>
+        <p class="lead" style="margin-top: var(--space-3);">Each one states its question, its method, its sample size and its limitations before it states its result.</p>
+
+        <ul class="study-list" style="margin-top: var(--space-6);">
+          <li class="study-item">
+            <p class="study-item__meta">
+              <span>001</span><span>2026-08-06</span><span class="status-pill status-pill--live">Live</span>
+            </p>
+            <h3 class="study-item__title"><a href="/studies/001-instruction-placement/">Where you put the instructions decides whether the agent uses the tool</a></h3>
+            <p class="study-item__summary">Identical instructions, two locations. Adoption moved from 22% to 100% of sessions. Placement, not prose, was the deciding variable.</p>
+          </li>
+          <li class="study-item">
+            <p class="study-item__meta">
+              <span>002</span><span>Measuring</span><span class="status-pill">In progress</span>
+            </p>
+            <h3 class="study-item__title"><a href="/studies/002-context-overhead/">How much of an agent's token spend never reaches a decision</a></h3>
+            <p class="study-item__summary">Wide, parallel work run through a batch engine instead of the agent's own context. First pass across nine jobs put aggregate output-token savings at 64.7%. Being re-run with per-scenario figures published.</p>
+          </li>
+        </ul>
+      </div>
+
+      <aside class="rail">
+        <div class="note">
+          <span class="note__label">Cadence</span>
+          Studies are re-run when a major model ships, and at minimum every quarter. Superseded figures stay published with a dated revision note. Nothing is silently edited.
+        </div>
+      </aside>
+    </section>
+
+    <div class="tick-rule" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+
+    <!-- ── Independence ─────────────────────────────────────────────────── -->
+    <section class="spread">
+      <div class="prose">
+        <h2 class="section-heading">How this is paid for</h2>
+        <p>The studies, the findings and the harness are free and always will be. The archive — every historical run, the raw transcripts, and the machine-readable series — is a paid subscription, and that is what funds the measurement.</p>
+        <p>No vendor pays for placement here, and no result is shown to a vendor before publication. If that ever changes it will be disclosed on this page before it is true, not after.</p>
+      </div>
+      <aside class="rail">
+        <div class="note">
+          <span class="note__label">Operator</span>
+          Published by Eriksen Labs (Eriksen ENK, org. 937&nbsp;027&nbsp;834), Norway. One person, named, contactable.
+        </div>
+      </aside>
+    </section>
+
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="canvas">
+    <div class="site-footer__cols">
+      <div>
+        <h2>Studies</h2>
+        <ul>
+          <li><a href="/studies/">All studies</a></li>
+          <li><a href="/method/">Method &amp; standards</a></li>
+          <li><a href="/corrections/">Corrections log</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Data</h2>
+        <ul>
+          <li><a href="/data/">The archive</a></li>
+          <li><a href="/data/schema/">Schema</a></li>
+          <li><a href="/feed.xml">RSS</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Harness</h2>
+        <ul>
+          <li><a href="/harness/">Documentation</a></li>
+          <li><a href="https://github.com/rolfe099-sketch/aion">Source (MIT)</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>Legal</h2>
+        <ul>
+          <li><a href="/privacy/">Privacy</a></li>
+          <li><a href="/terms/">Terms</a></li>
+          <li><a href="/disclosure/">Disclosure</a></li>
+        </ul>
+      </div>
+    </div>
+    <p class="site-footer__legal">
+      Findings on this site are published under CC&nbsp;BY&nbsp;4.0 — cite them freely, with a link. The measurement harness is MIT licensed. This site sets no advertising or analytics cookies.
+    </p>
+  </div>
+</footer>
+
+<script>
+/* Theme toggle. Core content works without this — the site follows the OS
+   setting by default and only stores a preference if the visitor overrides it. */
+(function () {
+  var root = document.documentElement;
+  var btn = document.getElementById('theme-toggle');
+  var stored = null;
+  try { stored = localStorage.getItem('theme'); } catch (e) {}
+  if (stored) root.setAttribute('data-theme', stored);
+
+  function current() {
+    return root.getAttribute('data-theme') ||
+      (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  }
+  function sync() {
+    btn.setAttribute('aria-label',
+      current() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+  }
+  btn.addEventListener('click', function () {
+    var next = current() === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('theme', next); } catch (e) {}
+    sync();
+  });
+  sync();
+})();
+</script>
+</body>
+</html>
