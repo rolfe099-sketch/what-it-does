@@ -141,6 +141,69 @@ function matchPattern(detected: CallChain): { pattern: EffectPattern; descriptio
 }
 
 // ---------------------------------------------------------------------------
+// Config dependence
+// ---------------------------------------------------------------------------
+
+/**
+ * Is this expression being used to DECIDE something?
+ *
+ * The distinction that makes this warning worth reading: passing
+ * `process.env.SUPABASE_URL` to a client constructor is configuration, and
+ * warning about it on every behaviour is noise that teaches people to ignore
+ * the warnings. Branching on `process.env.NODE_ENV === 'production'` genuinely
+ * changes what the code does, and that is what surprises people in production.
+ *
+ * Only the second kind is reported.
+ */
+function isUsedInDecision(node: ts.Node): boolean {
+  let current: ts.Node | undefined = node;
+  let child: ts.Node = node;
+
+  while ((current = current.parent)) {
+    if (ts.isIfStatement(current) && current.expression === child) return true;
+    if (ts.isConditionalExpression(current) && current.condition === child) return true;
+    if (ts.isSwitchStatement(current) && current.expression === child) return true;
+    if (ts.isCaseClause(current)) return true;
+    if (ts.isWhileStatement(current) && current.expression === child) return true;
+
+    if (ts.isPrefixUnaryExpression(current) && current.operator === ts.SyntaxKind.ExclamationToken) {
+      // !process.env.X — negation is only ever asked as a question.
+      child = current;
+      continue;
+    }
+
+    if (ts.isBinaryExpression(current)) {
+      const op = current.operatorToken.kind;
+      const decides =
+        op === ts.SyntaxKind.AmpersandAmpersandToken ||
+        op === ts.SyntaxKind.BarBarToken ||
+        op === ts.SyntaxKind.QuestionQuestionToken ||
+        op === ts.SyntaxKind.EqualsEqualsToken ||
+        op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+        op === ts.SyntaxKind.ExclamationEqualsToken ||
+        op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+      if (decides) return true;
+    }
+
+    // Keep climbing through wrappers that do not change the question.
+    if (
+      ts.isParenthesizedExpression(current) ||
+      ts.isNonNullExpression(current) ||
+      ts.isAsExpression(current) ||
+      ts.isPropertyAccessExpression(current)
+    ) {
+      child = current;
+      continue;
+    }
+
+    // Anything else means the value is being used, not interrogated.
+    return false;
+  }
+
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Scanning a file
 // ---------------------------------------------------------------------------
 
@@ -195,14 +258,15 @@ export function detectEffects(
         ts.isPropertyAccessExpression(node.expression) &&
         ts.isIdentifier(node.expression.expression) &&
         node.expression.expression.text === 'process' &&
-        node.expression.name.text === 'env'
+        node.expression.name.text === 'env' &&
+        isUsedInDecision(node)
       ) {
         const varName = node.name.text;
         if (!seenEnvVars.has(varName)) {
           seenEnvVars.add(varName);
           unknowns.push({
             reason: 'config-dependent',
-            detail: `This depends on the setting \`${varName}\`. It may behave differently in production than it does locally.`,
+            detail: `This takes a different path depending on the setting \`${varName}\`, so it may not behave the same in production as it does locally.`,
             source: refAt(node),
           });
         }

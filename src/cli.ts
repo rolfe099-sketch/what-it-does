@@ -10,6 +10,7 @@
 import * as path from 'node:path';
 import { detectNextJs, findEntryPoints } from './extract/nextjs/entrypoints.js';
 import { buildBehaviours } from './extract/behaviours.js';
+import { DEFAULT_DEPTH } from './extract/trace.js';
 import {
   CONSEQUENTIAL_EFFECTS,
   EFFECT_LABELS,
@@ -99,7 +100,7 @@ function scan(target: string) {
     process.exit(1);
   }
 
-  const behaviours = buildBehaviours(root, triggers);
+  const { behaviours } = buildBehaviours(root, triggers);
   const elapsed = Date.now() - started;
 
   console.log(`${DIM}Next.js ${detected.version} · app router at ${appDir} · ${elapsed}ms${RESET}`);
@@ -140,10 +141,11 @@ function scan(target: string) {
   const empty = behaviours.length - ranked.length;
   if (empty > 0) {
     heading(`${empty} ways in where we found no effects`);
+    console.log(`  ${DIM}Some of these genuinely do nothing — a static page is just a page.${RESET}`);
     console.log(
-      `  ${DIM}This usually means the logic lives in files we have not followed yet,${RESET}`,
+      `  ${DIM}The rest reach their work further than ${DEFAULT_DEPTH} hops of imports, or through${RESET}`,
     );
-    console.log(`  ${DIM}not that the behaviour does nothing. Import following is not built.${RESET}`);
+    console.log(`  ${DIM}code we cannot follow. Absence of effects here is not proof of none.${RESET}`);
   }
 
   // ---- Unknowns are reported, never swallowed ---------------------------

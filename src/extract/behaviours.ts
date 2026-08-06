@@ -1,32 +1,19 @@
 /**
- * Assembling behaviours: trigger + effects.
+ * Assembling behaviours: trigger + everything reachable from it.
  *
  * Scoping matters more than it looks. utils/auth-helpers/server.ts holds eleven
  * separate server actions; attributing every effect in that file to all eleven
- * would produce a map that is confidently wrong. So a server action is scanned
- * within its own function body, while a page or route file — which has one
- * entry point — is scanned whole.
- *
- * NOT YET DONE: following imports. Effects that live in a helper file are not
- * attributed to the behaviour that calls it. That is the next piece of work and
- * until it lands, a page whose logic sits in components will look emptier than
- * it is. The UI must say so rather than implying the behaviour is effect-free.
+ * would produce a map that is confidently wrong, which is worse than an empty
+ * one. So a server action is traced from its own function body, while a page or
+ * route file — which has one entry point — is traced whole.
  */
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import ts from 'typescript';
-import type { Behaviour, Effect, Trigger, Unknown } from '../model.js';
-import { detectEffects } from './effects.js';
+import type { Behaviour, Trigger } from '../model.js';
+import { createResolver } from './resolve.js';
+import { createTraceContext, traceFrom, DEFAULT_DEPTH, type TraceContext } from './trace.js';
 
-function scriptKindFor(file: string): ts.ScriptKind {
-  if (file.endsWith('.tsx')) return ts.ScriptKind.TSX;
-  if (file.endsWith('.jsx')) return ts.ScriptKind.JSX;
-  if (file.endsWith('.ts')) return ts.ScriptKind.TS;
-  return ts.ScriptKind.JS;
-}
-
-/** Find an exported function by name and return the span of its body. */
+/** Span of a top-level declaration by name. */
 function rangeOfExportedFunction(
   sourceFile: ts.SourceFile,
   name: string,
@@ -46,7 +33,7 @@ function rangeOfExportedFunction(
   return undefined;
 }
 
-/** Human-readable title. This is the sentence a founder would actually say. */
+/** The sentence a founder would actually say out loud. */
 function titleFor(trigger: Trigger): string {
   switch (trigger.kind) {
     case 'page':
@@ -62,7 +49,7 @@ function titleFor(trigger: Trigger): string {
   }
 }
 
-/** Stable across scans so drift can be diffed later. */
+/** Stable across scans, so drift can be diffed later. */
 function idFor(trigger: Trigger): string {
   switch (trigger.kind) {
     case 'server-action':
@@ -76,62 +63,40 @@ function idFor(trigger: Trigger): string {
   }
 }
 
-export function buildBehaviours(root: string, triggers: Trigger[]): Behaviour[] {
-  // One file is often home to many triggers; parse each exactly once.
-  const parsed = new Map<string, ts.SourceFile | null>();
+export interface BuildOptions {
+  /** How many import hops to follow. Deeper is slower and rarely more useful. */
+  depth?: number;
+}
 
-  const sourceFor = (repoPath: string): ts.SourceFile | null => {
-    if (parsed.has(repoPath)) return parsed.get(repoPath)!;
-    const full = path.join(root, ...repoPath.split('/'));
-    try {
-      const text = fs.readFileSync(full, 'utf8');
-      const sf = ts.createSourceFile(repoPath, text, ts.ScriptTarget.Latest, true, scriptKindFor(repoPath));
-      parsed.set(repoPath, sf);
-      return sf;
-    } catch {
-      parsed.set(repoPath, null);
-      return null;
-    }
-  };
+export function buildBehaviours(
+  root: string,
+  triggers: Trigger[],
+  options: BuildOptions = {},
+): { behaviours: Behaviour[]; context: TraceContext } {
+  const resolver = createResolver(root);
+  const context = createTraceContext(root, resolver, options.depth ?? DEFAULT_DEPTH);
 
-  const behaviours: Behaviour[] = [];
+  const behaviours: Behaviour[] = triggers.map((trigger) => {
+    const sourceFile = context.sources.get(trigger.source.file);
 
-  for (const trigger of triggers) {
-    const sourceFile = sourceFor(trigger.source.file);
+    // Server actions share a file with their siblings, so scope to the one
+    // function. Everything else owns its file.
+    const range =
+      sourceFile && trigger.kind === 'server-action' && trigger.exportName
+        ? rangeOfExportedFunction(sourceFile, trigger.exportName)
+        : undefined;
 
-    let effects: Effect[] = [];
-    let unknowns: Unknown[] = [];
+    const traced = traceFrom(context, trigger.source.file, range, context.maxDepth);
 
-    if (!sourceFile) {
-      unknowns = [
-        {
-          reason: 'parse-failed',
-          detail: 'We could not read the file this comes from. That is our bug.',
-          source: trigger.source,
-        },
-      ];
-    } else {
-      // Server actions share a file with their siblings, so scope to the one
-      // function. Everything else owns its file.
-      const range =
-        trigger.kind === 'server-action' && trigger.exportName
-          ? rangeOfExportedFunction(sourceFile, trigger.exportName)
-          : undefined;
-
-      const found = detectEffects(sourceFile, trigger.source.file, range);
-      effects = found.effects;
-      unknowns = found.unknowns;
-    }
-
-    behaviours.push({
+    return {
       id: idFor(trigger),
       title: titleFor(trigger),
       trigger,
       steps: [],
-      effects,
-      unknowns,
-    });
-  }
+      effects: traced.effects,
+      unknowns: traced.unknowns,
+    };
+  });
 
-  return behaviours;
+  return { behaviours, context };
 }
