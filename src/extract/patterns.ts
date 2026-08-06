@@ -31,6 +31,12 @@ export interface EffectPattern {
   /** `{arg}` is replaced by the captured argument, or dropped if absent. */
   describe: string;
   confidence: 'certain' | 'likely';
+  /**
+   * This call establishes WHO is asking. Marking it lets gap detection ask the
+   * question that matters: does anything destructive happen here without one of
+   * these appearing first?
+   */
+  authCheck?: boolean;
 }
 
 /**
@@ -123,6 +129,21 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     describe: 'Deletes a file from disk',
     confidence: 'certain',
   },
+  {
+    chain: ['users', 'deleteUser'],
+    kind: 'deletes-data',
+    describe: 'Permanently deletes a user account',
+    confidence: 'certain',
+  },
+  {
+    // Drizzle: db.delete(users).where(...)
+    chain: ['delete'],
+    root: /^(db|database|drizzle|tx)$/i,
+    kind: 'deletes-data',
+    labelArgFrom: 0,
+    describe: 'Deletes rows from {arg}',
+    confidence: 'certain',
+  },
 
   // ----------------------------------------------------------------- access
   {
@@ -171,6 +192,39 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     chain: ['auth', 'resetPasswordForEmail'],
     kind: 'sends-email',
     describe: 'Emails a password reset link',
+    confidence: 'certain',
+  },
+
+  // NextAuth / Auth.js. `signIn` and `signOut` are bare calls rather than
+  // methods, which is why the chain is a single element.
+  {
+    chain: ['signIn'],
+    kind: 'changes-access',
+    describe: 'Signs someone in',
+    confidence: 'certain',
+  },
+  {
+    chain: ['signOut'],
+    kind: 'changes-access',
+    describe: 'Signs someone out',
+    confidence: 'certain',
+  },
+  {
+    chain: ['users', 'updateUser'],
+    kind: 'changes-access',
+    describe: 'Changes a user account',
+    confidence: 'certain',
+  },
+  {
+    chain: ['users', 'createUser'],
+    kind: 'changes-access',
+    describe: 'Creates a user account',
+    confidence: 'certain',
+  },
+  {
+    chain: ['users', 'banUser'],
+    kind: 'changes-access',
+    describe: 'Bans a user',
     confidence: 'certain',
   },
 
@@ -230,6 +284,22 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     confidence: 'certain',
   },
   {
+    // Drizzle: db.insert(users).values({...})
+    chain: ['insert', 'values'],
+    kind: 'writes-data',
+    labelArgFrom: 0,
+    describe: 'Adds rows to {arg}',
+    confidence: 'certain',
+  },
+  {
+    // Drizzle: db.update(users).set({...})
+    chain: ['update', 'set'],
+    kind: 'writes-data',
+    labelArgFrom: 0,
+    describe: 'Changes rows in {arg}',
+    confidence: 'certain',
+  },
+  {
     chain: ['createMany'],
     kind: 'writes-data',
     describe: 'Creates multiple records at once',
@@ -283,17 +353,79 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     describe: 'Reads rows from {arg}',
     confidence: 'certain',
   },
+  // ---- Establishing who is asking -------------------------------------
+  // Marked authCheck so gap detection can ask whether anything destructive
+  // happens without one of these appearing anywhere in its path.
   {
     chain: ['auth', 'getUser'],
     kind: 'reads-data',
     describe: 'Checks who is signed in',
     confidence: 'certain',
+    authCheck: true,
   },
   {
     chain: ['auth', 'getSession'],
     kind: 'reads-data',
     describe: 'Checks the current session',
     confidence: 'certain',
+    authCheck: true,
+  },
+  {
+    // NextAuth v4
+    chain: ['getServerSession'],
+    kind: 'reads-data',
+    describe: 'Checks who is signed in',
+    confidence: 'certain',
+    authCheck: true,
+  },
+  {
+    // NextAuth v4 JWT
+    chain: ['getToken'],
+    kind: 'reads-data',
+    describe: 'Reads the session token to see who is asking',
+    confidence: 'certain',
+    authCheck: true,
+  },
+  {
+    // Auth.js v5 and Clerk both expose a bare auth(). Ambiguous by name, but in
+    // a Next.js app it means the same thing either way: who is asking?
+    chain: ['auth'],
+    kind: 'reads-data',
+    describe: 'Checks who is signed in',
+    confidence: 'likely',
+    authCheck: true,
+  },
+  {
+    // Clerk
+    chain: ['currentUser'],
+    kind: 'reads-data',
+    describe: 'Loads the signed-in user',
+    confidence: 'certain',
+    authCheck: true,
+  },
+  {
+    // Stripe webhook signature verification. This IS an authorisation check —
+    // it proves the caller is Stripe — and counting it prevents a false alarm
+    // on every webhook endpoint in existence.
+    chain: ['webhooks', 'constructEvent'],
+    kind: 'reads-data',
+    describe: 'Verifies the request really came from Stripe',
+    confidence: 'certain',
+    authCheck: true,
+  },
+  {
+    chain: ['useSession'],
+    kind: 'reads-data',
+    describe: 'Reads the session in the browser',
+    confidence: 'certain',
+    authCheck: true,
+  },
+  {
+    chain: ['getSession'],
+    kind: 'reads-data',
+    describe: 'Checks the current session',
+    confidence: 'likely',
+    authCheck: true,
   },
   {
     chain: ['findMany'],
@@ -333,6 +465,30 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     describe: 'Calls another service over the network',
     confidence: 'likely',
   },
+];
+
+/**
+ * Function names that establish who is asking.
+ *
+ * The explicit table above cannot enumerate every project's guard — dub has
+ * `verifyQstashSignature`, another codebase has `requireWorkspaceOwner`, a third
+ * has `withAdmin`. But the naming is strongly conventional, and missing these
+ * produces the worst possible output: a confident claim that a properly
+ * protected endpoint is unprotected.
+ *
+ * Matched against the called function name only, and reported at 'likely'
+ * confidence because it is inference from a name rather than a known API.
+ */
+export const AUTH_CHECK_NAME_PATTERNS: RegExp[] = [
+  // verifySignature, validateSession, checkPermission, requireAdmin, ensureAuth
+  /^(verify|validate|check|require|ensure|assert)\w*(auth|signature|session|token|permission|access|admin|owner|role|webhook|apikey|key)/i,
+  // The higher-order-guard convention: withAuth, withAdmin, withWorkspace, and
+  // longer forms like withReferralsEmbedToken. The distinguishing word can sit
+  // anywhere after `with`, which an earlier version got wrong by anchoring it to
+  // the second position.
+  /^with\w*(Auth|Token|Session|Admin|User|Workspace|Access|Key|Guard|Permission|Role|Owner|Member|Partner|Program|Embed)/i,
+  // Direct fetches of the current actor
+  /^(requireAuth|requireUser|requireSession|getCurrentUser|getAuthUser|getUserOrThrow|protect|authorize|authorise)$/i,
 ];
 
 /**

@@ -74,6 +74,8 @@ export interface Effect {
    * 'likely'   — inferred from naming or partial evidence, and says so in the UI
    */
   confidence: 'certain' | 'likely';
+  /** This call establishes who is asking. Used by gap detection. */
+  isAuthCheck?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +153,34 @@ export interface Trigger {
 // The behaviour itself
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Gaps — where a behaviour does not do what it appears to.
+//
+// This is the sharpest thing the tool produces and the easiest to get wrong. A
+// false accusation that someone's live app has a security hole is worse than
+// saying nothing, so every gap carries what would make it a false alarm.
+// ---------------------------------------------------------------------------
+
+export type GapKind =
+  /** Destroys, charges or grants access with no visible check on who is asking. */
+  | 'unprotected-destructive'
+  /** The name promises something the code does not appear to do. */
+  | 'unfulfilled-promise';
+
+export interface Gap {
+  kind: GapKind;
+  /** One line, plain language. This is the sentence someone will screenshot. */
+  summary: string;
+  /** Why we think so, AND what would make us wrong. Never omit the second half. */
+  detail: string;
+  /**
+   * 'likely'   — we traced the behaviour and the thing is genuinely absent
+   * 'possible' — consistent with a gap, but there are ordinary explanations
+   */
+  confidence: 'likely' | 'possible';
+  source: SourceRef;
+}
+
 export interface Step {
   /** Plain language: "Checks the visitor is signed in". */
   label: string;
@@ -169,6 +199,7 @@ export interface Behaviour {
   /** Aggregated from steps, de-duplicated. */
   effects: Effect[];
   unknowns: Unknown[];
+  gaps: Gap[];
 }
 
 /**
@@ -181,10 +212,14 @@ export function consequenceScore(behaviour: Behaviour): number {
   for (const effect of behaviour.effects) {
     score += CONSEQUENTIAL_EFFECTS.has(effect.kind) ? 10 : 1;
   }
-  // A gap in something consequential is itself worth surfacing.
   for (const unknown of behaviour.unknowns) {
     if (UNKNOWN_GUIDANCE[unknown.reason].severity === 'warning') score += 5;
     if (UNKNOWN_GUIDANCE[unknown.reason].severity === 'attention') score += 2;
+  }
+  // A suspected gap outranks everything. If the tool thinks something is wrong,
+  // that is the first thing a person should see.
+  for (const gap of behaviour.gaps) {
+    score += gap.confidence === 'likely' ? 40 : 20;
   }
   return score;
 }

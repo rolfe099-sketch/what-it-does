@@ -25,6 +25,7 @@ const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
 const ACCENT = '\x1b[38;5;173m';
 const WARN = '\x1b[38;5;179m';
+const ALERT = '\x1b[38;5;167m';
 
 const heading = (text: string) => console.log(`\n${BOLD}${text}${RESET}`);
 
@@ -118,6 +119,24 @@ function scan(target: string) {
       const mark = CONSEQUENTIAL_EFFECTS.has(kind) ? `${ACCENT}●${RESET}` : `${DIM}○${RESET}`;
       const label = EFFECT_LABELS[kind].padEnd(width);
       console.log(`  ${mark} ${label}${DIM}${count} ${plural(count, 'way in', 'ways in')}${RESET}`);
+    }
+  }
+
+  // ---- What looks wrong --------------------------------------------------
+  // Above everything else, because if the tool thinks something is broken that
+  // is the first thing a person should read.
+  const withGaps = behaviours.filter((b) => b.gaps.length > 0);
+  if (withGaps.length > 0) {
+    const total = withGaps.reduce((n, b) => n + b.gaps.length, 0);
+    heading(`${total} ${plural(total, 'thing', 'things')} worth checking`);
+    for (const behaviour of withGaps) {
+      for (const gap of behaviour.gaps) {
+        const mark = gap.confidence === 'likely' ? `${ALERT}▲${RESET}` : `${WARN}▲${RESET}`;
+        console.log(`\n  ${mark} ${BOLD}${behaviour.title}${RESET}`);
+        console.log(`    ${gap.summary}`);
+        console.log(`    ${DIM}${gap.detail}${RESET}`);
+        console.log(`    ${DIM}${gap.source.file}:${gap.source.line}${RESET}`);
+      }
     }
   }
 

@@ -10,7 +10,7 @@
 
 import ts from 'typescript';
 import type { Effect, SourceRef, Unknown } from '../model.js';
-import { EFFECT_PATTERNS, type EffectPattern } from './patterns.js';
+import { AUTH_CHECK_NAME_PATTERNS, EFFECT_PATTERNS, type EffectPattern } from './patterns.js';
 
 // ---------------------------------------------------------------------------
 // Flattening a call chain
@@ -137,6 +137,24 @@ function matchPattern(detected: CallChain): { pattern: EffectPattern; descriptio
     }
     return { pattern, description };
   }
+
+  // Fall back to the naming convention for guards. Only ever produces an auth
+  // check — never a destructive effect — so a bad guess here can silence a
+  // warning but can never invent one.
+  const called = detected.chain[detected.chain.length - 1];
+  if (called && AUTH_CHECK_NAME_PATTERNS.some((re) => re.test(called))) {
+    return {
+      pattern: {
+        chain: [called],
+        kind: 'reads-data',
+        describe: '',
+        confidence: 'likely',
+        authCheck: true,
+      },
+      description: `Checks who is asking, via \`${called}()\``,
+    };
+  }
+
   return null;
 }
 
@@ -246,6 +264,7 @@ export function detectEffects(
             description: matched.description,
             source: refAt(node),
             confidence: matched.pattern.confidence,
+            isAuthCheck: matched.pattern.authCheck,
           });
         }
       }

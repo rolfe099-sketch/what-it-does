@@ -153,6 +153,63 @@ function rangeOfSymbol(
   return undefined;
 }
 
+/**
+ * Follow a symbol through re-exports to the file that actually declares it.
+ *
+ * Barrel files — `lib/auth/index.ts` containing nothing but `export * from
+ * "./admin"` — are the most common module pattern in TypeScript and they used to
+ * end every trace that touched one. Importing `withAdmin` from `@/lib/auth`
+ * landed on a file with no declarations, the trace stopped, and the tool then
+ * reported that a properly protected admin endpoint had no authorisation check.
+ *
+ * Confidently wrong, which is the worst thing this tool can be.
+ *
+ * Barrel hops get their own budget rather than spending call depth, because
+ * passing through a re-export is not a step in the program's logic.
+ */
+function findDeclaringFile(
+  context: TraceContext,
+  repoPath: string,
+  name: string,
+  budget = 5,
+  seen: Set<string> = new Set(),
+): { file: string; range: { pos: number; end: number } } | null {
+  const key = `${repoPath}#${name}`;
+  if (seen.has(key)) return null; // barrels can be circular
+  seen.add(key);
+
+  const sourceFile = context.sources.get(repoPath);
+  if (!sourceFile) return null;
+
+  const local = rangeOfSymbol(sourceFile, name);
+  if (local) return { file: repoPath, range: local };
+  if (budget <= 0) return null;
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isExportDeclaration(statement) || !statement.moduleSpecifier) continue;
+    if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
+
+    const resolved = context.resolver.resolve(repoPath, statement.moduleSpecifier.text);
+    if (typeof resolved !== 'string') continue;
+
+    if (statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+      // export { withAdmin } from './admin'  /  export { a as b } from './x'
+      for (const element of statement.exportClause.elements) {
+        if (element.name.text !== name) continue;
+        const originalName = (element.propertyName ?? element.name).text;
+        const found = findDeclaringFile(context, resolved, originalName, budget - 1, seen);
+        if (found) return found;
+      }
+    } else if (!statement.exportClause) {
+      // export * from './admin'
+      const found = findDeclaringFile(context, resolved, name, budget - 1, seen);
+      if (found) return found;
+    }
+  }
+
+  return null;
+}
+
 export interface TraceContext {
   root: string;
   sources: SourceCache;
@@ -232,15 +289,23 @@ export function traceFrom(
         continue;
       }
 
-      const targetSource = context.sources.get(resolved);
-      if (!targetSource) continue;
+      if (!context.sources.get(resolved)) continue;
 
       // A namespace import gives no single symbol to scope to, so the whole
-      // module is in scope.
-      const targetRange =
-        binding.importedName === '*' ? undefined : rangeOfSymbol(targetSource, binding.importedName);
+      // module is in scope. Otherwise follow the symbol to wherever it is
+      // actually declared, which may be several barrel files away.
+      let targetFile = resolved;
+      let targetRange: { pos: number; end: number } | undefined;
 
-      const nested = traceFrom(context, resolved, targetRange, depth - 1, seen);
+      if (binding.importedName !== '*') {
+        const declaring = findDeclaringFile(context, resolved, binding.importedName);
+        if (declaring) {
+          targetFile = declaring.file;
+          targetRange = declaring.range;
+        }
+      }
+
+      const nested = traceFrom(context, targetFile, targetRange, depth - 1, seen);
       effects.push(...nested.effects);
       unknowns.push(...nested.unknowns);
     }

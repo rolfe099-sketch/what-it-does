@@ -11,6 +11,7 @@
 import ts from 'typescript';
 import type { Behaviour, Trigger } from '../model.js';
 import { createResolver } from './resolve.js';
+import { detectGaps } from './gaps.js';
 import { createTraceContext, traceFrom, DEFAULT_DEPTH, type TraceContext } from './trace.js';
 
 /** Span of a top-level declaration by name. */
@@ -76,6 +77,10 @@ export function buildBehaviours(
   const resolver = createResolver(root);
   const context = createTraceContext(root, resolver, options.depth ?? DEFAULT_DEPTH);
 
+  // Middleware can protect endpoints in a way we do not model, so its presence
+  // softens every authorisation claim we make.
+  const gapContext = { hasMiddleware: triggers.some((t) => t.kind === 'middleware') };
+
   const behaviours: Behaviour[] = triggers.map((trigger) => {
     const sourceFile = context.sources.get(trigger.source.file);
 
@@ -88,14 +93,18 @@ export function buildBehaviours(
 
     const traced = traceFrom(context, trigger.source.file, range, context.maxDepth);
 
-    return {
+    const behaviour: Behaviour = {
       id: idFor(trigger),
       title: titleFor(trigger),
       trigger,
       steps: [],
       effects: traced.effects,
       unknowns: traced.unknowns,
+      gaps: [],
     };
+
+    behaviour.gaps = detectGaps(behaviour, gapContext);
+    return behaviour;
   });
 
   return { behaviours, context };
