@@ -1,0 +1,169 @@
+---
+import { getCollection, render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import FixList from '../../components/FixList.astro';
+import { fixesForDefect, formatDate } from '../../lib/data';
+
+export async function getStaticPaths() {
+  const defects = await getCollection('defects');
+  return defects.map((defect) => ({
+    params: { slug: defect.id },
+    props: { defect },
+  }));
+}
+
+const { defect } = Astro.props;
+const { Content } = await render(defect);
+const fixes = fixesForDefect(defect.id);
+
+const severityLabel = {
+  cosmetic: 'Cosmetic',
+  structural: 'Structural',
+  'print-ending': 'Print-ending',
+} as const;
+
+const severityNote = {
+  cosmetic: 'The part is usable. This affects how it looks.',
+  structural: 'The part may be weaker or the wrong size. Check before relying on it.',
+  'print-ending': 'The print is likely to fail or already has.',
+} as const;
+
+/* HowTo is the honest schema type here: this page is a set of ordered steps to
+   fix a problem. We do not claim aggregate ratings or review counts, because
+   there are none. */
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@type': 'HowTo',
+  name: `How to fix ${defect.data.title.toLowerCase()} in 3D printing`,
+  description: defect.data.summary,
+  dateModified: formatDate(defect.data.updated),
+  step: fixes.map((fix, i) => ({
+    '@type': 'HowToStep',
+    position: i + 1,
+    name: fix.title,
+    text: fix.why,
+  })),
+};
+
+const description = `${defect.data.summary} ${fixes.length} ordered fixes, with the reasoning behind each one.`;
+---
+
+<Base
+  title={defect.data.title}
+  description={description}
+  ogType="defect"
+  structuredData={structuredData}
+>
+  <div class="canvas">
+
+    <article class="spread">
+      <div class="stack-md">
+        <p class="eyebrow">Defect · {severityLabel[defect.data.severity]}</p>
+        <h1 class="title">{defect.data.title}</h1>
+        <p class="lead">{defect.data.summary}</p>
+      </div>
+
+      <aside class="rail">
+        <div class="note">
+          <span class="note__label">At a glance</span>
+          <dl>
+            <dt>Severity</dt><dd>{severityLabel[defect.data.severity]}</dd>
+            <dt>Fixes</dt><dd>{fixes.length}</dd>
+            <dt>Reviewed</dt><dd>{formatDate(defect.data.updated)}</dd>
+          </dl>
+        </div>
+
+        <div class="note note--caveat">
+          <span class="note__label">What this means</span>
+          {severityNote[defect.data.severity]}
+        </div>
+
+        {defect.data.alsoKnownAs.length > 0 && (
+          <div class="note">
+            <span class="note__label">Also called</span>
+            {defect.data.alsoKnownAs.join(', ')}
+          </div>
+        )}
+      </aside>
+    </article>
+
+    <div class="tick-rule" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+
+    <section class="spread">
+      <div class="prose defect-prose">
+        <Content />
+      </div>
+      <aside class="rail">
+        <div class="note">
+          <span class="note__label">Change one thing</span>
+          Work down the list in order and change one setting at a time. Changing
+          three at once and having the problem go away teaches you nothing about
+          which one mattered.
+        </div>
+      </aside>
+    </section>
+
+    <section class="spread">
+      <div>
+        <h2 class="section-heading" id="fixes">Fixes, in order</h2>
+        <FixList fixes={fixes} />
+      </div>
+
+      <aside class="rail">
+        <div class="note">
+          <span class="note__label">Confidence</span>
+          <dl>
+            <dt>Established</dt><dd>Documented</dd>
+            <dt>Likely</dt><dd>Usually works</dd>
+            <dt>Situational</dt><dd>One cause only</dd>
+          </dl>
+        </div>
+        <div class="note note--caveat">
+          <span class="note__label">Verified results</span>
+          Every fix shows how many submitted results back it. Most show zero
+          today — the dataset is new, and saying so is the only way the number
+          means anything later.
+        </div>
+      </aside>
+    </section>
+
+    <div class="tick-rule" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+
+    <section class="spread">
+      <div class="prose">
+        <h2 class="section-heading">Narrow this to your setup</h2>
+        <p>
+          Some of the fixes above only apply to certain machines or materials —
+          Bowden retraction advice is noise on a direct-drive printer. The
+          diagnostic filters the list to what is relevant for what you are
+          actually running.
+        </p>
+        <p><a href={`/fix/?defect=${defect.id}`}>Diagnose {defect.data.title.toLowerCase()} for your printer →</a></p>
+      </div>
+      <aside class="rail">
+        <div class="note">
+          <span class="note__label">Contribute</span>
+          Tried one of these and it worked, or did not? <a href="/contribute/">Send the result</a>. That is what turns the zeroes above into numbers.
+        </div>
+      </aside>
+    </section>
+
+  </div>
+</Base>
+
+<style>
+  /* Markdown from the content file. Styled here rather than globally so the
+     prose rules cannot leak into component markup. */
+  .defect-prose :global(h2) {
+    font-family: var(--font-display);
+    font-size: var(--size-xl);
+    font-weight: var(--weight-regular);
+    line-height: var(--leading-snug);
+    letter-spacing: var(--tracking-tight);
+    margin-top: var(--space-7);
+  }
+  .defect-prose :global(h2:first-child) { margin-top: 0; }
+  .defect-prose :global(p) { margin-top: var(--space-4); }
+  .defect-prose :global(table) { margin-top: var(--space-5); }
+  .defect-prose :global(strong) { font-weight: var(--weight-semi); color: var(--ink); }
+</style>

@@ -1,0 +1,290 @@
+{
+  "_comment": "Filament reference data. Temperatures are nozzle/bed in Celsius. These are working ranges from manufacturer datasheets and established community practice — always defer to the number printed on the spool, which is why every material page says so. Add a material by copying a block and changing the values; nothing in the code needs to be touched.",
+
+  "pla": {
+    "name": "PLA",
+    "fullName": "Polylactic acid",
+    "summary": "The default. Easiest to print, lowest warping, poor heat resistance. If a part will sit in a car in summer, do not use PLA.",
+    "nozzle": { "min": 190, "max": 220, "typical": 205 },
+    "bed": { "min": 45, "max": 65, "typical": 60 },
+    "chamber": null,
+    "enclosure": "harmful",
+    "enclosureNote": "An enclosure raises chamber temperature and softens PLA before it finishes cooling. Leave the door open.",
+    "cooling": { "min": 80, "max": 100 },
+    "drying": { "required": false, "temp": 45, "hours": 4 },
+    "shrinkage": 0.3,
+    "warpTendency": "low",
+    "retractionSensitivity": "low",
+    "stringingTendency": "low",
+    "abrasive": false,
+    "glassTransition": 60,
+    "adhesion": ["Smooth PEI", "Textured PEI", "Glue stick on glass"],
+    "watchFor": [
+      "Softening in hot cars or direct sun — it starts moving around 60 °C",
+      "Brittleness after months of UV exposure"
+    ]
+  },
+
+  "pla-plus": {
+    "name": "PLA+",
+    "fullName": "Modified polylactic acid",
+    "summary": "PLA with toughening additives. Slightly higher temperatures, noticeably less brittle, otherwise behaves like PLA.",
+    "nozzle": { "min": 205, "max": 230, "typical": 215 },
+    "bed": { "min": 50, "max": 70, "typical": 60 },
+    "chamber": null,
+    "enclosure": "harmful",
+    "enclosureNote": "Same as PLA — keep the chamber cool.",
+    "cooling": { "min": 70, "max": 100 },
+    "drying": { "required": false, "temp": 45, "hours": 4 },
+    "shrinkage": 0.3,
+    "warpTendency": "low",
+    "retractionSensitivity": "low",
+    "stringingTendency": "low",
+    "abrasive": false,
+    "glassTransition": 60,
+    "adhesion": ["Smooth PEI", "Textured PEI"],
+    "watchFor": [
+      "Brand-to-brand variation is much wider than with plain PLA — re-tune when you switch supplier"
+    ]
+  },
+
+  "petg": {
+    "name": "PETG",
+    "fullName": "Polyethylene terephthalate glycol",
+    "summary": "Tougher and more heat resistant than PLA, and the usual first step up. Strings enthusiastically and sticks to smooth beds hard enough to damage them.",
+    "nozzle": { "min": 230, "max": 250, "typical": 240 },
+    "bed": { "min": 70, "max": 85, "typical": 80 },
+    "chamber": null,
+    "enclosure": "optional",
+    "enclosureNote": "Helps a little with layer adhesion, not required.",
+    "cooling": { "min": 30, "max": 60 },
+    "drying": { "required": true, "temp": 65, "hours": 6 },
+    "shrinkage": 0.4,
+    "warpTendency": "medium",
+    "retractionSensitivity": "high",
+    "stringingTendency": "high",
+    "abrasive": false,
+    "glassTransition": 80,
+    "adhesion": ["Textured PEI", "Glass with glue stick"],
+    "watchFor": [
+      "Bonds to bare smooth PEI so strongly it can tear the sheet — use textured PEI or a glue-stick release layer",
+      "Absorbs moisture from the air within days; wet PETG pops and strings far worse than dry"
+    ]
+  },
+
+  "abs": {
+    "name": "ABS",
+    "fullName": "Acrylonitrile butadiene styrene",
+    "summary": "Heat resistant and machinable, but it warps hard and needs a warm, still chamber. Not a material to print in an open printer in a cold room.",
+    "nozzle": { "min": 235, "max": 265, "typical": 250 },
+    "bed": { "min": 90, "max": 110, "typical": 100 },
+    "chamber": { "min": 40, "max": 55 },
+    "enclosure": "required",
+    "enclosureNote": "Draughts cause layer splitting. The chamber needs to be warm and, more importantly, still.",
+    "cooling": { "min": 0, "max": 20 },
+    "drying": { "required": false, "temp": 65, "hours": 4 },
+    "shrinkage": 0.8,
+    "warpTendency": "high",
+    "retractionSensitivity": "medium",
+    "stringingTendency": "medium",
+    "abrasive": false,
+    "glassTransition": 105,
+    "adhesion": ["Smooth PEI", "ABS slurry on glass", "Kapton tape"],
+    "watchFor": [
+      "Emits styrene while printing — ventilate the room, do not sit next to it",
+      "Large flat parts will lift at the corners no matter how good the first layer is; design in a brim or split the part"
+    ]
+  },
+
+  "asa": {
+    "name": "ASA",
+    "fullName": "Acrylonitrile styrene acrylate",
+    "summary": "ABS with proper UV resistance. The right answer for parts that live outdoors. Prints like ABS and warps like ABS.",
+    "nozzle": { "min": 240, "max": 270, "typical": 255 },
+    "bed": { "min": 90, "max": 110, "typical": 100 },
+    "chamber": { "min": 40, "max": 55 },
+    "enclosure": "required",
+    "enclosureNote": "Same as ABS. Still air matters more than hot air.",
+    "cooling": { "min": 0, "max": 20 },
+    "drying": { "required": false, "temp": 65, "hours": 4 },
+    "shrinkage": 0.7,
+    "warpTendency": "high",
+    "retractionSensitivity": "medium",
+    "stringingTendency": "medium",
+    "abrasive": false,
+    "glassTransition": 100,
+    "adhesion": ["Smooth PEI", "ABS/ASA slurry on glass"],
+    "watchFor": [
+      "Ventilate as you would for ABS",
+      "Holds colour outdoors for years where ABS chalks and yellows"
+    ]
+  },
+
+  "tpu": {
+    "name": "TPU",
+    "fullName": "Thermoplastic polyurethane",
+    "summary": "Flexible. Prints slowly, hates retraction, and will jam a Bowden setup given the slightest excuse.",
+    "nozzle": { "min": 210, "max": 235, "typical": 225 },
+    "bed": { "min": 25, "max": 50, "typical": 40 },
+    "chamber": null,
+    "enclosure": "optional",
+    "enclosureNote": "No real effect either way.",
+    "cooling": { "min": 30, "max": 70 },
+    "drying": { "required": true, "temp": 55, "hours": 6 },
+    "shrinkage": 0.6,
+    "warpTendency": "low",
+    "retractionSensitivity": "high",
+    "stringingTendency": "high",
+    "abrasive": false,
+    "glassTransition": null,
+    "adhesion": ["Textured PEI", "Smooth PEI"],
+    "watchFor": [
+      "Print slowly — 15–30 mm/s on most machines. Speed is the single most common cause of TPU failures",
+      "Direct drive strongly preferred; softer shore ratings buckle in a Bowden tube"
+    ]
+  },
+
+  "nylon": {
+    "name": "Nylon (PA)",
+    "fullName": "Polyamide",
+    "summary": "Tough, abrasion resistant, and a sponge. Nylon straight off a shelf that has been open for a week will print badly no matter what settings you use.",
+    "nozzle": { "min": 240, "max": 280, "typical": 260 },
+    "bed": { "min": 70, "max": 100, "typical": 85 },
+    "chamber": { "min": 40, "max": 60 },
+    "enclosure": "required",
+    "enclosureNote": "Needed for layer adhesion and to keep ambient humidity away from the part.",
+    "cooling": { "min": 0, "max": 30 },
+    "drying": { "required": true, "temp": 75, "hours": 12 },
+    "shrinkage": 1.5,
+    "warpTendency": "high",
+    "retractionSensitivity": "medium",
+    "stringingTendency": "high",
+    "abrasive": false,
+    "glassTransition": 60,
+    "adhesion": ["Garolite (G10)", "PVA glue on glass"],
+    "watchFor": [
+      "Dry it before every print, not once a month. This is not optional advice",
+      "Absorbs moisture fast enough that a long print can degrade partway through — print from a dry box"
+    ]
+  },
+
+  "pc": {
+    "name": "PC",
+    "fullName": "Polycarbonate",
+    "summary": "The strongest common filament and the most demanding. High temperatures, high warping, and it needs a machine that can genuinely reach the numbers.",
+    "nozzle": { "min": 260, "max": 310, "typical": 280 },
+    "bed": { "min": 100, "max": 130, "typical": 110 },
+    "chamber": { "min": 50, "max": 80 },
+    "enclosure": "required",
+    "enclosureNote": "An actively heated chamber is close to mandatory for parts above a few centimetres.",
+    "cooling": { "min": 0, "max": 15 },
+    "drying": { "required": true, "temp": 80, "hours": 8 },
+    "shrinkage": 0.7,
+    "warpTendency": "high",
+    "retractionSensitivity": "medium",
+    "stringingTendency": "medium",
+    "abrasive": false,
+    "glassTransition": 145,
+    "adhesion": ["Smooth PEI", "PC-specific adhesive"],
+    "watchFor": [
+      "Most stock hotends top out below what PC really wants — check your maximum before buying a spool",
+      "Wet PC prints cloudy and weak, and the difference is dramatic"
+    ]
+  },
+
+  "petg-cf": {
+    "name": "PETG-CF",
+    "fullName": "Carbon-fibre filled PETG",
+    "summary": "Stiffer and more dimensionally stable than plain PETG, with a matte finish. The carbon fibre will destroy a brass nozzle.",
+    "nozzle": { "min": 240, "max": 260, "typical": 250 },
+    "bed": { "min": 70, "max": 90, "typical": 80 },
+    "chamber": null,
+    "enclosure": "optional",
+    "enclosureNote": "Helpful for layer adhesion on larger parts.",
+    "cooling": { "min": 30, "max": 60 },
+    "drying": { "required": true, "temp": 65, "hours": 6 },
+    "shrinkage": 0.2,
+    "warpTendency": "low",
+    "retractionSensitivity": "medium",
+    "stringingTendency": "medium",
+    "abrasive": true,
+    "glassTransition": 80,
+    "adhesion": ["Textured PEI"],
+    "watchFor": [
+      "Hardened steel or ruby nozzle required — brass wears out in hours, not weeks",
+      "Needs a larger nozzle (0.4 mm minimum, 0.6 mm preferred) or it clogs"
+    ]
+  },
+
+  "pa-cf": {
+    "name": "PA-CF",
+    "fullName": "Carbon-fibre filled nylon",
+    "summary": "Engineering-grade: stiff, tough, heat resistant, dimensionally far better behaved than plain nylon. Abrasive and thirsty.",
+    "nozzle": { "min": 260, "max": 300, "typical": 280 },
+    "bed": { "min": 80, "max": 110, "typical": 90 },
+    "chamber": { "min": 45, "max": 65 },
+    "enclosure": "required",
+    "enclosureNote": "Required for consistent layer bonding.",
+    "cooling": { "min": 0, "max": 25 },
+    "drying": { "required": true, "temp": 80, "hours": 12 },
+    "shrinkage": 0.4,
+    "warpTendency": "medium",
+    "retractionSensitivity": "medium",
+    "stringingTendency": "medium",
+    "abrasive": true,
+    "glassTransition": 70,
+    "adhesion": ["Garolite (G10)", "Smooth PEI"],
+    "watchFor": [
+      "Hardened steel nozzle required",
+      "Carbon fill reduces warping compared to plain nylon but does nothing about moisture — still dry it every time"
+    ]
+  },
+
+  "hips": {
+    "name": "HIPS",
+    "fullName": "High impact polystyrene",
+    "summary": "Mostly used as a dissolvable support for ABS, since limonene removes it. Prints similarly to ABS on its own.",
+    "nozzle": { "min": 230, "max": 250, "typical": 240 },
+    "bed": { "min": 90, "max": 110, "typical": 100 },
+    "chamber": { "min": 35, "max": 50 },
+    "enclosure": "required",
+    "enclosureNote": "Warps like ABS without one.",
+    "cooling": { "min": 0, "max": 30 },
+    "drying": { "required": false, "temp": 65, "hours": 4 },
+    "shrinkage": 0.6,
+    "warpTendency": "high",
+    "retractionSensitivity": "medium",
+    "stringingTendency": "medium",
+    "abrasive": false,
+    "glassTransition": 100,
+    "adhesion": ["Smooth PEI", "ABS slurry on glass"],
+    "watchFor": [
+      "Ventilate as for ABS",
+      "Dissolves in limonene, which takes hours and smells strongly of oranges"
+    ]
+  },
+
+  "pvb": {
+    "name": "PVB",
+    "fullName": "Polyvinyl butyral",
+    "summary": "Prints much like PLA but smooths with isopropyl alcohol vapour, so it is the usual choice for transparent or polished parts.",
+    "nozzle": { "min": 215, "max": 235, "typical": 225 },
+    "bed": { "min": 60, "max": 80, "typical": 75 },
+    "chamber": null,
+    "enclosure": "optional",
+    "enclosureNote": "No strong effect.",
+    "cooling": { "min": 50, "max": 100 },
+    "drying": { "required": true, "temp": 55, "hours": 6 },
+    "shrinkage": 0.4,
+    "warpTendency": "low",
+    "retractionSensitivity": "medium",
+    "stringingTendency": "medium",
+    "abrasive": false,
+    "glassTransition": 65,
+    "adhesion": ["Smooth PEI", "Textured PEI"],
+    "watchFor": [
+      "Softens in humidity over time — finished parts are not weatherproof",
+      "IPA smoothing works but is flammable; do it away from anything hot"
+    ]
+  }
+}

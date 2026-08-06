@@ -1,0 +1,55 @@
+---
+/**
+ * The layerfix wordmark.
+ *
+ * The glyph is five stacked print layers with the third one displaced — a layer
+ * shift, the most recognisable failure in 3D printing. It is drawn inline rather
+ * than imported as an image so it inherits the theme colour for free and costs
+ * no extra request.
+ */
+interface Props {
+  /** Renders as a link unless this is the page the wordmark sits on. */
+  isCurrentPage?: boolean;
+}
+const { isCurrentPage = false } = Astro.props;
+
+const Tag = isCurrentPage ? 'span' : 'a';
+---
+
+<Tag class="wordmark" {...(isCurrentPage ? {} : { href: '/' })}>
+  <svg
+    class="wordmark__glyph"
+    width="20"
+    height="18"
+    viewBox="0 0 20 18"
+    aria-hidden="true"
+    fill="none"
+  >
+    <!-- Four layers sitting true -->
+    <path d="M2 2.5h13M2 6.5h13M2 14.5h13M2 17.5h13"
+          stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity="0.45" />
+    <!-- The displaced layer -->
+    <path d="M7 10.5h13"
+          stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" />
+  </svg>
+  <span class="wordmark__name">layerfix</span>
+</Tag>
+
+<style>
+  /* Scoped to the component. Global type and colour still come from tokens. */
+  .wordmark {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-family: var(--font-display);
+    font-size: var(--size-l);
+    line-height: 1;
+    letter-spacing: var(--tracking-tight);
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .wordmark:hover { color: var(--ink); }
+  .wordmark:hover .wordmark__name { color: var(--accent); }
+  .wordmark__name { transition: color var(--duration-fast) var(--ease); }
+  .wordmark__glyph { flex: none; }
+</style>

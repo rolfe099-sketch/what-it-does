@@ -1,0 +1,148 @@
+---
+import type { Fix } from '../lib/data';
+
+interface Props {
+  fixes: Fix[];
+  /** Shown when the filter excluded everything — never render a bare empty list. */
+  emptyMessage?: string;
+}
+
+const {
+  fixes,
+  emptyMessage = 'No fixes match that combination yet. That is a gap in the dataset rather than a claim that nothing will help.',
+} = Astro.props;
+
+const confidenceLabel: Record<string, string> = {
+  established: 'Established',
+  likely: 'Likely',
+  situational: 'Situational',
+};
+---
+
+{fixes.length === 0 ? (
+  <p class="fix-empty">{emptyMessage}</p>
+) : (
+  <ol class="fix-list">
+    {fixes.map((fix, index) => (
+      <li class="fix">
+        <div class="fix__index" aria-hidden="true">{index + 1}</div>
+
+        <div class="fix__body">
+          <h3 class="fix__title">{fix.title}</h3>
+
+          <p class="fix__change">
+            <span class="fix__setting">{fix.setting}</span>
+            <span class="fix__arrow" aria-hidden="true">→</span>
+            <span class="fix__amount">{fix.amount}</span>
+          </p>
+
+          <p class="fix__why">{fix.why}</p>
+
+          <p class="fix__meta">
+            <span class={`fix__confidence fix__confidence--${fix.confidence}`}>
+              {confidenceLabel[fix.confidence]}
+            </span>
+            <span class="fix__evidence">
+              {fix.evidence.verified === 0
+                ? 'No verified results yet'
+                : `${fix.evidence.verified} verified result${fix.evidence.verified === 1 ? '' : 's'}`}
+            </span>
+          </p>
+        </div>
+      </li>
+    ))}
+  </ol>
+)}
+
+<style>
+  .fix-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    counter-reset: fix;
+  }
+
+  .fix {
+    display: grid;
+    grid-template-columns: 2.5rem 1fr;
+    gap: var(--space-4);
+    padding-block: var(--space-5);
+    border-top: var(--border-hair) solid var(--rule);
+  }
+  .fix:last-child { border-bottom: var(--border-hair) solid var(--rule); }
+
+  /* The step number is set in the display face at a size that makes the order
+     obvious at a glance — these are meant to be worked through, not scanned. */
+  .fix__index {
+    font-family: var(--font-display);
+    font-size: var(--size-xl);
+    line-height: 1;
+    color: var(--accent);
+  }
+
+  .fix__title {
+    font-family: var(--font-text);
+    font-size: var(--size-m);
+    font-weight: var(--weight-semi);
+    line-height: var(--leading-snug);
+    margin: 0 0 var(--space-2);
+  }
+
+  /* Setting → amount, in mono so the numbers line up down the page. */
+  .fix__change {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2);
+    font-family: var(--font-data);
+    font-size: var(--size-s);
+    margin: 0 0 var(--space-3);
+  }
+  .fix__setting { color: var(--ink); font-weight: var(--weight-medium); }
+  .fix__arrow { color: var(--ink-faint); }
+  .fix__amount { color: var(--accent); }
+
+  .fix__why {
+    margin: 0;
+    max-width: var(--measure);
+    color: var(--ink-muted);
+  }
+
+  .fix__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    margin: var(--space-3) 0 0;
+    font-family: var(--font-data);
+    font-size: var(--size-3xs);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+  }
+
+  .fix__confidence {
+    padding: 0.15em 0.5em;
+    border: var(--border-hair) solid var(--rule-strong);
+    border-radius: var(--radius-sm);
+    color: var(--ink-muted);
+  }
+  .fix__confidence--established { border-color: var(--accent); color: var(--accent); }
+
+  /* Never dressed up. Zero verified results reads as zero, in the same muted
+     ink as everything else, because inflating it would make the dataset
+     worthless the first time someone checked. */
+  .fix__evidence { color: var(--ink-faint); }
+
+  .fix-empty {
+    padding: var(--space-5);
+    background: var(--surface-sunk);
+    border-radius: var(--radius-md);
+    color: var(--ink-muted);
+    max-width: var(--measure);
+  }
+
+  @media (max-width: 40rem) {
+    .fix { grid-template-columns: 1.75rem 1fr; gap: var(--space-3); }
+    .fix__index { font-size: var(--size-l); }
+  }
+</style>

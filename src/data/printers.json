@@ -1,0 +1,107 @@
+{
+  "_comment": "Printers are grouped by CLASS, not by model. This is deliberate. The advice that actually changes between machines depends on four things — motion system, extruder type, whether there is an enclosure, and maximum hotend temperature — not on the badge. Grouping this way also keeps us from generating a page per printer model, which would be scaled content abuse and would get the site deindexed. Add a machine by putting it in the examples list of the class it belongs to.",
+
+  "bedslinger-bowden": {
+    "name": "Open bed-slinger, Bowden",
+    "shortName": "Bowden bed-slinger",
+    "examples": ["Creality Ender 3 / Ender 3 Pro (stock)", "Creality CR-10", "Anycubic Mega", "Artillery Genius (early)"],
+    "motion": "cartesian-moving-bed",
+    "extruder": "bowden",
+    "enclosed": false,
+    "maxNozzle": 240,
+    "maxBed": 100,
+    "partCooling": "single",
+    "quirks": [
+      "Long Bowden tube means retraction needs to be far longer than a direct-drive machine — typically 4–7 mm against 0.5–2 mm",
+      "The moving bed limits useful print speed; tall thin parts wobble at speed and produce ringing",
+      "Stock hotends are usually PTFE-lined, which degrades above about 240 °C and releases fumes — this caps the materials you can safely run",
+      "Flexible filament is difficult to impossible without an extruder upgrade"
+    ]
+  },
+
+  "bedslinger-direct": {
+    "name": "Open bed-slinger, direct drive",
+    "shortName": "Direct-drive bed-slinger",
+    "examples": ["Bambu Lab A1 / A1 mini", "Creality Ender 3 S1", "Sovol SV06", "Anycubic Kobra 2", "Elegoo Neptune 4"],
+    "motion": "cartesian-moving-bed",
+    "extruder": "direct",
+    "enclosed": false,
+    "maxNozzle": 300,
+    "maxBed": 100,
+    "partCooling": "single",
+    "quirks": [
+      "Short filament path means retraction should be small — starting above about 2 mm usually causes more problems than it solves",
+      "Handles flexible filament well, which is the main reason to choose this over Bowden",
+      "Still a moving bed, so tall parts remain speed-limited regardless of what the hotend can do",
+      "No enclosure means ABS, ASA, PC and nylon will warp or split; PLA and PETG are the comfortable range"
+    ]
+  },
+
+  "i3-direct": {
+    "name": "i3-style, direct drive, open",
+    "shortName": "Prusa-style i3",
+    "examples": ["Prusa MK3S+", "Prusa MK4 / MK4S", "Prusa MINI+ (Bowden variant differs)"],
+    "motion": "cartesian-moving-bed",
+    "extruder": "direct",
+    "enclosed": false,
+    "maxNozzle": 300,
+    "maxBed": 120,
+    "partCooling": "single",
+    "quirks": [
+      "Well-tuned stock profiles mean a failure is more likely to be filament or hardware than slicer settings — check moisture and the nozzle first",
+      "Input shaping on MK4-class machines allows real speed; older MK3S-class machines do not and will ring if pushed",
+      "Add-on enclosures make ABS and ASA workable but watch that the electronics stay cool"
+    ]
+  },
+
+  "corexy-open": {
+    "name": "Open CoreXY",
+    "shortName": "Open CoreXY",
+    "examples": ["Voron Trident (unenclosed)", "RatRig V-Core 3", "Sovol SV08"],
+    "motion": "corexy",
+    "extruder": "direct",
+    "enclosed": false,
+    "maxNozzle": 300,
+    "maxBed": 120,
+    "partCooling": "dual",
+    "quirks": [
+      "The bed moves only in Z, so tall parts are far less speed-limited than on a bed-slinger",
+      "High achievable acceleration exposes extrusion problems that slower machines hide — under-extrusion often appears only at speed",
+      "Usually self-built, so a defect is as likely to be mechanical (belt tension, gantry rack) as it is to be a setting"
+    ]
+  },
+
+  "corexy-enclosed": {
+    "name": "Enclosed CoreXY",
+    "shortName": "Enclosed CoreXY",
+    "examples": ["Bambu Lab X1C / P1S / H2D", "Voron 2.4", "Qidi X-Plus 3 / X-Max 3", "Creality K1 / K2"],
+    "motion": "corexy",
+    "extruder": "direct",
+    "enclosed": true,
+    "maxNozzle": 300,
+    "maxBed": 120,
+    "partCooling": "dual",
+    "quirks": [
+      "The enclosure that makes ABS and ASA possible actively harms PLA — chamber heat softens parts before they finish cooling. Open the door for PLA",
+      "High speed and acceleration mean moisture problems show up as surface defects that look like settings problems",
+      "Auto-calibration hides small mechanical faults until they become large ones"
+    ]
+  },
+
+  "delta": {
+    "name": "Delta",
+    "shortName": "Delta",
+    "examples": ["FLSUN Super Racer / V400", "Anycubic Kossel", "Monoprice Delta Mini"],
+    "motion": "delta",
+    "extruder": "bowden",
+    "enclosed": false,
+    "maxNozzle": 260,
+    "maxBed": 100,
+    "partCooling": "ring",
+    "quirks": [
+      "Bed levelling errors show as a dished or domed first layer across the whole plate rather than a tilt — delta calibration is its own skill",
+      "Usually Bowden, so retraction behaves like a Bowden bed-slinger",
+      "Very fast in X and Y with a fixed bed, which suits tall cylindrical parts"
+    ]
+  }
+}

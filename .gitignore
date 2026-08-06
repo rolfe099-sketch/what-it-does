@@ -1,4 +1,9 @@
 ﻿# Build output
+dist/
+.astro/
+node_modules/
+
+# Design-phase review artefact (regenerate with: python design/build-review.py)
 design/review.html
 
 # OS / editor noise
