@@ -14,6 +14,7 @@ import { detectNextJs, findEntryPoints } from './extract/nextjs/entrypoints.js';
 import { buildBehaviours } from './extract/behaviours.js';
 import { DEFAULT_DEPTH } from './extract/trace.js';
 import { renderReport } from './report/render.js';
+import { snapshot, diff, type Snapshot } from './report/drift.js';
 import {
   CONSEQUENTIAL_EFFECTS,
   EFFECT_LABELS,
@@ -85,6 +86,35 @@ interface ScanOptions {
   report: boolean;
   /** Open the report in the default browser once written. */
   open: boolean;
+  /** Embed source excerpts in walkthroughs. */
+  includeCode: boolean;
+}
+
+/**
+ * Where the previous scan is kept, so the next one can say what moved.
+ * Inside the scanned project, because the comparison belongs to that project.
+ */
+const SNAPSHOT_DIR = '.eriksen';
+const SNAPSHOT_FILE = 'last-scan.json';
+
+function readSnapshot(root: string): Snapshot | null {
+  try {
+    const raw = fs.readFileSync(path.join(root, SNAPSHOT_DIR, SNAPSHOT_FILE), 'utf8');
+    const parsed = JSON.parse(raw);
+    return parsed?.version === 1 ? (parsed as Snapshot) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSnapshot(root: string, snap: Snapshot) {
+  try {
+    const dir = path.join(root, SNAPSHOT_DIR);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, SNAPSHOT_FILE), JSON.stringify(snap, null, 2), 'utf8');
+  } catch {
+    /* A read-only project still gets a report; it just cannot show drift. */
+  }
 }
 
 /** Hand the report to the OS. Best-effort: a failure here is not a scan failure. */
@@ -126,6 +156,11 @@ function scan(target: string, options: ScanOptions) {
   const { behaviours } = buildBehaviours(root, triggers, middleware);
   const elapsed = Date.now() - started;
 
+  // Compare against the previous scan before overwriting it.
+  const previous = readSnapshot(root);
+  const drift = previous ? diff(previous, behaviours) : undefined;
+  writeSnapshot(root, snapshot(behaviours));
+
   if (options.report) {
     const html = renderReport({
       projectName: path.basename(root),
@@ -137,6 +172,8 @@ function scan(target: string, options: ScanOptions) {
       elapsedMs: elapsed,
       scannedAt: new Date(),
       traceDepth: DEFAULT_DEPTH,
+      drift,
+      includeCode: options.includeCode,
     });
     const out = path.join(process.cwd(), 'eriksen-report.html');
     fs.writeFileSync(out, html, 'utf8');
@@ -245,6 +282,7 @@ if (command === 'scan') {
   scan(target ?? process.cwd(), {
     report: !argv.includes('--no-report'),
     open: !argv.includes('--no-open'),
+    includeCode: !argv.includes('--no-code'),
   });
 } else {
   console.log(`
@@ -254,6 +292,7 @@ ${BOLD}eriksen${RESET} — shows you what software you didn't write actually doe
 
     --no-open     Write the report but do not open it
     --no-report   Terminal output only
+    --no-code     Omit source excerpts, for a report you intend to share
 
 Writes a single self-contained HTML file. No server, no network, no account —
 your code never leaves this machine, and neither does the report.

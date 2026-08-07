@@ -4,6 +4,8 @@ dist/
 
 # Test subjects — cloned repos, not ours to commit
 fixtures/
+!fixtures/gapdemo/
+fixtures/gapdemo/.eriksen/
 
 # OS / editor noise
 Thumbs.db

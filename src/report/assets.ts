@@ -22,7 +22,8 @@ function packageRoot(): string {
 }
 
 const FONT_FILES = {
-  display: 'instrument-serif-latin-400-normal.woff2',
+  display: 'space-grotesk-latin-500-normal.woff2',
+  displayBold: 'space-grotesk-latin-700-normal.woff2',
   sans: 'ibm-plex-sans-latin-400-normal.woff2',
   sansMedium: 'ibm-plex-sans-latin-500-normal.woff2',
   sansSemi: 'ibm-plex-sans-latin-600-normal.woff2',
@@ -53,7 +54,8 @@ export function fontFaces(): string {
   };
 
   return [
-    face('Instrument Serif', 400, FONT_FILES.display),
+    face('Space Grotesk', 500, FONT_FILES.display),
+    face('Space Grotesk', 700, FONT_FILES.displayBold),
     face('IBM Plex Sans', 400, FONT_FILES.sans),
     face('IBM Plex Sans', 500, FONT_FILES.sansMedium),
     face('IBM Plex Sans', 600, FONT_FILES.sansSemi),

@@ -6,13 +6,24 @@
  * That portability is also the privacy position — a report that fetches nothing
  * is a report that reveals nothing.
  *
- * Two rules govern the layout, both inherited from the design direction:
+ * THREE VIEWS, ONE DOCUMENT:
  *
- *   Orientation, not enumeration. A list of 686 routes is a data dump. The job
- *   is to answer "what can this thing do, and what should worry me".
+ *   #map          what the application can do, grouped and ranked
+ *   #wt-<id>      one behaviour, walked through step by step with its code
+ *   #drift        what moved since the last scan
  *
- *   Caveats sit level with the claims they qualify, in the margin rail — not
- *   buried in a footnote nobody scrolls to.
+ * Switching is pure CSS `:target`. No router, no framework, no build step. The
+ * back button works, every view is linkable, and with scripting off the document
+ * degrades to all views stacked and readable rather than to a blank page.
+ *
+ * Two rules govern the layout:
+ *
+ *   ORIENTATION, NOT ENUMERATION. 686 rows is a data dump. The job is to answer
+ *   "what can this thing do, and what should worry me".
+ *
+ *   CAVEATS SIT LEVEL WITH THEIR CLAIM. In flow, immediately beneath, at every
+ *   breakpoint — never a footnote, never a tooltip, never small grey text at the
+ *   bottom of the page.
  */
 
 import {
@@ -20,12 +31,16 @@ import {
   EFFECT_LABELS,
   consequenceScore,
   type Behaviour,
+  type Effect,
   type EffectKind,
   type Unknown,
 } from '../model.js';
 import type { MiddlewareInfo } from '../extract/nextjs/middleware.js';
 import { fontFaces } from './assets.js';
+import { TOKENS } from './tokens.js';
 import { REPORT_CSS } from './styles.js';
+import { SourceReader, dedent } from './source.js';
+import type { DriftResult } from './drift.js';
 
 export interface ReportData {
   projectName: string;
@@ -37,21 +52,28 @@ export interface ReportData {
   elapsedMs: number;
   scannedAt: Date;
   traceDepth: number;
+  /** Present only when a previous scan exists to compare against. */
+  drift?: DriftResult;
+  /** Embed source snippets in walkthroughs. Off via --no-code. */
+  includeCode: boolean;
 }
 
-/** How many behaviours get the full treatment. The rest are summarised. */
-const DETAIL_LIMIT = 15;
+/** Behaviours that get a full walkthrough page. Everything with a finding is
+ *  always included regardless of rank — a finding is the reason to look. */
+const WALKTHROUGH_LIMIT = 30;
+/** Groups shown before the tail is folded into "Everything else". */
+const GROUP_LIMIT = 11;
 
-const escape = (value: string): string =>
-  value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+// ---------------------------------------------------------------------------
+// Text
+// ---------------------------------------------------------------------------
 
-/** `code` spans in effect descriptions become real markup. */
-const withCode = (value: string): string =>
-  escape(value).replace(/`([^`]+)`/g, '<code>$1</code>');
+const escape = (v: string): string =>
+  v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** `code` spans inside plain-language strings become real markup. */
+const withCode = (v: string): string =>
+  escape(v).replace(/`([^`]+)`/g, '<code>$1</code>');
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
@@ -62,137 +84,393 @@ const KIND_LABEL: Record<string, string> = {
   middleware: 'Every request',
 };
 
+const isBig = (kind: EffectKind) => CONSEQUENTIAL_EFFECTS.has(kind);
+const tone = (kind: EffectKind) => (isBig(kind) ? 'var(--accent)' : 'var(--ink-faint)');
+
+/** Stable, DOM-safe id for a behaviour. */
+const slug = (id: string) => 'wt-' + id.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+
+const byConsequence = (a: Behaviour, b: Behaviour) => consequenceScore(b) - consequenceScore(a);
+
+const bigFirst = (a: Effect, b: Effect) => (isBig(b.kind) ? 1 : 0) - (isBig(a.kind) ? 1 : 0);
+
 // ---------------------------------------------------------------------------
-// Sections
+// Grouping — how 686 becomes readable
 // ---------------------------------------------------------------------------
+
+function groupOf(b: Behaviour): string {
+  if (b.trigger.kind === 'server-action') return 'Form actions';
+  if (b.trigger.kind === 'middleware') return 'Every request';
+
+  const parts = b.trigger.urlPath.split('/').filter(Boolean);
+  if (parts.length === 0) return 'Home';
+  if (parts[0] === 'api') return parts[1] ? `API · ${parts[1]}` : 'API';
+  return parts[0].replace(/^\(|\)$/g, '');
+}
+
+interface Group {
+  name: string;
+  items: Behaviour[];
+  score: number;
+}
+
+function grouped(behaviours: Behaviour[]): Group[] {
+  const map = new Map<string, Behaviour[]>();
+  for (const b of behaviours) {
+    const key = groupOf(b);
+    (map.get(key) ?? map.set(key, []).get(key)!).push(b);
+  }
+
+  const groups: Group[] = [...map.entries()].map(([name, items]) => ({
+    name,
+    items: [...items].sort(byConsequence),
+    score: Math.max(...items.map(consequenceScore)),
+  }));
+
+  if (groups.length <= GROUP_LIMIT) {
+    return groups.sort((a, b) => b.score - a.score || b.items.length - a.items.length);
+  }
+
+  /**
+   * A group earns its own row if it is HIGH-CONSEQUENCE or LARGE.
+   *
+   * Selecting on consequence alone put every API group in the head and swept
+   * 413 of dub's 686 behaviours into a single "Everything else" — more than half
+   * the application in one drawer, which is the data dump this grouping exists
+   * to prevent. Selecting on size alone would bury a small, dangerous group.
+   * Taking the union of both lists keeps the dangerous ones and the big ones.
+   */
+  const half = Math.ceil(GROUP_LIMIT / 2);
+  const byRisk = [...groups].sort((a, b) => b.score - a.score).slice(0, half);
+  const bySize = [...groups].sort((a, b) => b.items.length - a.items.length).slice(0, GROUP_LIMIT - half);
+
+  const chosen = new Set<string>([...byRisk, ...bySize].map((g) => g.name));
+  const head = groups
+    .filter((g) => chosen.has(g.name))
+    .sort((a, b) => b.score - a.score || b.items.length - a.items.length);
+  const tail = groups.filter((g) => !chosen.has(g.name));
+
+  if (tail.length > 0) {
+    head.push({
+      name: `Everything else (${tail.length} smaller ${plural(tail.length, 'area', 'areas')})`,
+      items: tail.flatMap((g) => g.items).sort(byConsequence),
+      score: 0,
+    });
+  }
+  return head;
+}
+
+// ---------------------------------------------------------------------------
+// Pieces
+// ---------------------------------------------------------------------------
+
+function pip(kind: EffectKind, title?: string): string {
+  return `<span class="pip" style="--bar:${tone(kind)}"${title ? ` title="${escape(title)}"` : ''}></span>`;
+}
 
 function capabilityBars(behaviours: Behaviour[]): string {
   const counts = new Map<EffectKind, number>();
-  for (const behaviour of behaviours) {
-    for (const kind of new Set(behaviour.effects.map((e) => e.kind))) {
+  for (const b of behaviours) {
+    for (const kind of new Set(b.effects.map((e) => e.kind))) {
       counts.set(kind, (counts.get(kind) ?? 0) + 1);
     }
   }
   if (counts.size === 0) return '';
 
   const rows = [...counts.entries()].sort((a, b) => {
-    const aBig = CONSEQUENTIAL_EFFECTS.has(a[0]) ? 1 : 0;
-    const bBig = CONSEQUENTIAL_EFFECTS.has(b[0]) ? 1 : 0;
-    if (aBig !== bBig) return bBig - aBig;
-    return b[1] - a[1];
+    const d = (isBig(b[0]) ? 1 : 0) - (isBig(a[0]) ? 1 : 0);
+    return d !== 0 ? d : b[1] - a[1];
   });
-
   const max = Math.max(...rows.map(([, n]) => n));
 
-  // Two tones only. The palette carries meaning — consequential or not — rather
-  // than giving every category its own hue, which would be decoration.
-  const bars = rows
+  return `<ul class="bars">${rows
     .map(([kind, count], i) => {
-      const big = CONSEQUENTIAL_EFFECTS.has(kind);
-      const colour = big ? 'var(--accent)' : 'var(--ink-faint)';
       const width = Math.max(2, Math.round((count / max) * 100));
-      return `
-      <li>
-        <div class="bar__head">
-          <span class="bar__label"><span class="dot" style="--bar:${colour}"></span>${escape(EFFECT_LABELS[kind])}</span>
-          <span class="bar__count">${count}</span>
-        </div>
-        <div class="bar__track">
-          <div class="bar__fill" style="width:${width}%;--bar:${colour};animation-delay:${i * 60}ms"></div>
-        </div>
-      </li>`;
+      return `<li>
+      <div class="bar__head">
+        <span class="bar__label">${pip(kind)}${escape(EFFECT_LABELS[kind])}</span>
+        <span class="bar__count num">${count}</span>
+      </div>
+      <div class="bar__track">
+        <div class="bar__fill" style="width:${width}%;--bar:${tone(kind)};animation-delay:${i * 55}ms"></div>
+      </div>
+    </li>`;
     })
-    .join('');
-
-  return `<ul class="bars">${bars}</ul>`;
+    .join('')}</ul>`;
 }
 
-function findings(behaviours: Behaviour[]): string {
+function findings(behaviours: Behaviour[], linkable: Set<string>): string {
   const withGaps = behaviours.filter((b) => b.gaps.length > 0);
-  const total = withGaps.reduce((n, b) => n + b.gaps.length, 0);
 
-  if (total === 0) {
-    return `
-      <div class="all-clear">
-        <span class="all-clear__mark" aria-hidden="true">✓</span>
-        <div>
-          <strong>Nothing looked wrong.</strong>
-          Every behaviour that deletes data or moves money also establishes who is
-          asking. That is the correct result for a well-built application — but it
-          is a statement about what we could see, not a guarantee.
-        </div>
-      </div>`;
+  if (withGaps.length === 0) {
+    return `<div class="clear">
+      <svg class="clear__mark" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+        <path d="M3.5 9.5l3.5 3.5 7.5-8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div><strong>Nothing looked wrong.</strong> Every behaviour that deletes data or
+      moves money also establishes who is asking.</div>
+    </div>
+    <div class="caveat">
+      <span class="caveat__label">What this does and does not mean</span>
+      This is the correct result for a well-built application. It is a statement
+      about what we could read, not a guarantee — a guard reached through code we
+      could not follow and a missing guard look identical from here.
+    </div>`;
   }
 
-  const cards = withGaps
-    .flatMap((behaviour) =>
-      behaviour.gaps.map(
-        (gap) => `
-      <div class="finding finding--${gap.confidence}">
-        <p class="finding__title">${escape(behaviour.title)}
+  return `<div class="findings">${withGaps
+    .flatMap((b) =>
+      b.gaps.map(
+        (gap) => `<div class="finding finding--${gap.confidence}">
+        <div class="finding__top">
           <span class="badge badge--${gap.confidence}">${gap.confidence}</span>
-        </p>
+          <span class="finding__where">${escape(gap.source.file)}:${gap.source.line}</span>
+        </div>
         <p class="finding__summary">${withCode(gap.summary)}</p>
         <p class="finding__detail">${withCode(gap.detail)}</p>
-        <p class="finding__where">${escape(gap.source.file)}:${gap.source.line}</p>
+        ${linkable.has(b.id) ? `<a class="finding__link" href="#${slug(b.id)}">Walk through ${escape(b.title)} →</a>` : ''}
       </div>`,
       ),
     )
-    .join('');
-
-  return cards;
+    .join('')}</div>`;
 }
 
-function behaviourList(behaviours: Behaviour[]): { html: string; shown: number; ranked: number } {
-  const ranked = behaviours
-    .map((b) => ({ b, score: consequenceScore(b) }))
-    .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score);
+function behaviourRow(b: Behaviour, linkable: boolean): string {
+  const effects = [...b.effects].sort(bigFirst);
+  const shown = effects.slice(0, 4);
+  const rest = effects.length - shown.length;
 
-  const shown = ranked.slice(0, DETAIL_LIMIT);
+  const body = `
+    <div class="beh__top">
+      <span class="beh__title">${escape(b.title)}</span>
+      <span class="beh__kind">${escape(KIND_LABEL[b.trigger.kind] ?? '')}</span>
+    </div>
+    <div class="beh__where">${escape(b.trigger.source.file)}:${b.trigger.source.line}</div>
+    ${
+      effects.length > 0
+        ? `<div class="beh__pips">${shown
+            .map((e) => pip(e.kind, EFFECT_LABELS[e.kind]))
+            .join('')}${rest > 0 ? `<span class="beh__more">+${rest}</span>` : ''}</div>`
+        : ''
+    }`;
 
-  const html = shown
-    .map(({ b }) => {
-      const effects = [...b.effects]
-        .sort((x, y) => {
-          const a = CONSEQUENTIAL_EFFECTS.has(x.kind) ? 1 : 0;
-          const c = CONSEQUENTIAL_EFFECTS.has(y.kind) ? 1 : 0;
-          return c - a;
-        })
-        .map((effect) => {
-          const big = CONSEQUENTIAL_EFFECTS.has(effect.kind);
-          const colour = big ? 'var(--accent)' : 'var(--ink-faint)';
-          const hedge =
-            effect.confidence === 'likely' ? ' <span class="hedge">(probably)</span>' : '';
-          return `<li class="effect${big ? '' : ' effect--minor'}">
-            <span class="dot effect__dot" style="--bar:${colour}"></span>
-            <span class="effect__text">${withCode(effect.description)}${hedge}</span>
-          </li>`;
-        })
-        .join('');
+  return linkable
+    ? `<a class="beh" href="#${slug(b.id)}">${body}</a>`
+    : `<div class="beh">${body}</div>`;
+}
 
-      const warnings = b.unknowns
-        .filter((u) => u.reason === 'config-dependent')
-        .map(
-          (u) =>
-            `<p class="warn"><span class="warn__mark" aria-hidden="true">▲</span><span>${withCode(u.detail)}</span></p>`,
-        )
-        .join('');
+function groupList(groups: Group[], linkable: Set<string>): string {
+  return `<div class="groups">${groups
+    .map((g, i) => {
+      const marks = [
+        ...new Set(g.items.flatMap((b) => b.effects.filter((e) => isBig(e.kind)).map((e) => e.kind))),
+      ];
+      const gaps = g.items.reduce((n, b) => n + b.gaps.length, 0);
 
-      return `
-      <li class="behaviour">
-        <div class="behaviour__head">
-          <h3 class="behaviour__title">${escape(b.title)}</h3>
-          <span class="behaviour__kind">${escape(KIND_LABEL[b.trigger.kind] ?? '')}</span>
-        </div>
-        <p class="behaviour__where">${escape(b.trigger.source.file)}:${b.trigger.source.line}</p>
-        <ul class="effects">${effects}</ul>
-        ${warnings}
-      </li>`;
+      return `<details class="group"${i < 2 ? ' open' : ''}>
+      <summary>
+        <svg class="group__chev" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+          <path d="M3 1.5L6.5 5 3 8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="group__name">${escape(g.name)}</span>
+        <span class="group__count num">${g.items.length}</span>
+        <span class="group__marks">
+          ${gaps > 0 ? `<span class="badge badge--likely">${gaps} to check</span>` : ''}
+          ${marks.map((k) => pip(k, EFFECT_LABELS[k])).join('')}
+        </span>
+      </summary>
+      <div class="group__body">${g.items.map((b) => behaviourRow(b, linkable.has(b.id))).join('')}</div>
+    </details>`;
     })
-    .join('');
+    .join('')}</div>`;
+}
 
-  return { html: `<ul class="behaviours">${html}</ul>`, shown: shown.length, ranked: ranked.length };
+// ---------------------------------------------------------------------------
+// Walkthrough
+// ---------------------------------------------------------------------------
+
+/**
+ * Order the effects of a behaviour into a readable sequence.
+ *
+ * IMPORTANT HONESTY POINT: this is SOURCE order, not execution order. Static
+ * analysis cannot know what actually runs first — a conditional, an early
+ * return or an await changes it. The heading says so, because presenting source
+ * order as execution order would be exactly the kind of confident wrongness this
+ * tool exists to avoid.
+ */
+function sequence(b: Behaviour): Effect[] {
+  const entry = b.trigger.source.file;
+  return [...b.effects].sort((x, y) => {
+    if (x.source.file !== y.source.file) {
+      if (x.source.file === entry) return -1;
+      if (y.source.file === entry) return 1;
+      return x.source.file.localeCompare(y.source.file);
+    }
+    return x.source.line - y.source.line;
+  });
+}
+
+function codeBlock(reader: SourceReader, file: string, line: number): string {
+  const snip = reader.read(file, line);
+  if (!snip) return '';
+  const lines = dedent(snip.lines);
+
+  return `<div class="code">
+    <div class="code__head"><span>${escape(file)}</span><span>line ${line}</span></div>
+    <pre><code>${lines
+      .map((text, i) => {
+        const n = snip.startLine + i;
+        const row = `<span class="ln">${String(n).padStart(4, ' ')}</span>${escape(text) || ' '}`;
+        return i === snip.hitIndex ? `<span class="hit">${row}</span>` : row;
+      })
+      .join('\n')}</code></pre>
+  </div>`;
+}
+
+function walkthrough(b: Behaviour, reader: SourceReader | null): string {
+  const steps = sequence(b);
+  const configs = b.unknowns.filter((u) => u.reason === 'config-dependent');
+
+  return `<section class="view" id="${slug(b.id)}" aria-label="Walkthrough: ${escape(b.title)}">
+    <div class="wrap">
+      <a class="back" href="#map">← All behaviours</a>
+
+      <div class="col" style="margin-top:var(--s5)">
+        <p class="eyebrow">${escape(KIND_LABEL[b.trigger.kind] ?? '')}${
+          b.trigger.methods ? ` · ${escape(b.trigger.methods.join(' '))}` : ''
+        }</p>
+        <h2 class="h1" style="margin-top:var(--s3)">${escape(b.title)}</h2>
+        <p class="meta" style="margin-top:var(--s3)">${escape(b.trigger.source.file)}:${b.trigger.source.line}</p>
+      </div>
+
+      ${b.gaps
+        .map(
+          (gap) => `<div class="finding finding--${gap.confidence}" style="margin-top:var(--s6)">
+        <div class="finding__top"><span class="badge badge--${gap.confidence}">${gap.confidence}</span></div>
+        <p class="finding__summary">${withCode(gap.summary)}</p>
+        <p class="finding__detail">${withCode(gap.detail)}</p>
+      </div>`,
+        )
+        .join('')}
+
+      ${
+        steps.length === 0
+          ? `<div class="caveat" style="margin-top:var(--s6)">
+              <span class="caveat__label">Nothing to walk through</span>
+              We found no effects here. It may genuinely do nothing, or its work
+              may happen further away than we followed.
+            </div>`
+          : `<div class="section" style="margin-top:var(--s7)">
+              <div class="section__head">
+                <h3 class="h2">What it does</h3>
+                <span class="section__index">${steps.length} ${plural(steps.length, 'step', 'steps')}</span>
+              </div>
+              <div class="caveat">
+                <span class="caveat__label">Read this as source order, not run order</span>
+                These are listed in the order they appear in your code. We read the
+                code without running it, so we cannot know which branch actually
+                executes first — a condition or an early return can change it.
+              </div>
+              <ol class="steps">
+                ${steps
+                  .map(
+                    (e, i) => `<li class="step${isBig(e.kind) ? ' step--big' : ''}">
+                  <span class="step__node num" aria-hidden="true">${i + 1}</span>
+                  <span class="step__tag">${escape(EFFECT_LABELS[e.kind])}</span>
+                  <p class="step__label">${withCode(e.description)}${
+                    e.confidence === 'likely'
+                      ? ' <span class="hedge">— inferred from a name, not a known library call</span>'
+                      : ''
+                  }</p>
+                  <p class="step__where">${escape(e.source.file)}:${e.source.line}</p>
+                  ${reader ? codeBlock(reader, e.source.file, e.source.line) : ''}
+                </li>`,
+                  )
+                  .join('')}
+              </ol>
+            </div>`
+      }
+
+      ${
+        configs.length > 0
+          ? `<div class="section">
+              <div class="section__head"><h3 class="h2">Depends on configuration</h3></div>
+              ${configs
+                .map(
+                  (u) => `<div class="caveat caveat--accent">
+                <span class="caveat__label">${escape(u.source.file)}:${u.source.line}</span>
+                ${withCode(u.detail)}
+              </div>`,
+                )
+                .join('')}
+            </div>`
+          : ''
+      }
+    </div>
+  </section>`;
+}
+
+// ---------------------------------------------------------------------------
+// Drift
+// ---------------------------------------------------------------------------
+
+function driftView(drift: DriftResult): string {
+  const since = drift.since.slice(0, 16).replace('T', ' ');
+
+  return `<section class="view" id="drift" aria-label="What changed">
+    <div class="wrap">
+      <a class="back" href="#map">← All behaviours</a>
+
+      <div class="col" style="margin-top:var(--s5)">
+        <p class="eyebrow">Compared with ${escape(since)}</p>
+        <h2 class="h1" style="margin-top:var(--s3)">What moved since the last scan</h2>
+      </div>
+
+      ${
+        drift.changes.length === 0
+          ? `<div class="clear" style="margin-top:var(--s6)">
+              <svg class="clear__mark" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <path d="M3.5 9.5l3.5 3.5 7.5-8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <div><strong>Nothing moved.</strong> All ${drift.unchanged} behaviours do
+              exactly what they did before.</div>
+            </div>`
+          : `<div class="drift">${drift.changes
+              .map(
+                (c) => `<div class="change change--${c.kind}">
+          <p class="change__op">${c.kind === 'added' ? 'New' : c.kind === 'removed' ? 'Gone' : 'Changed'}</p>
+          <p class="change__title">${escape(c.title)}</p>
+          <div class="change__body">
+            ${c.lost
+              .map(
+                (l) =>
+                  `<div class="delta delta--gone"><span class="delta__sign">−</span><span>No longer: ${withCode(l)}</span></div>`,
+              )
+              .join('')}
+            ${c.gained
+              .map(
+                (g) =>
+                  `<div class="delta delta--new"><span class="delta__sign">+</span><span>Now also: ${withCode(g)}</span></div>`,
+              )
+              .join('')}
+            ${
+              c.gapDelta > 0
+                ? `<div class="delta delta--gone"><span class="delta__sign">!</span><span>${c.gapDelta} new ${plural(c.gapDelta, 'thing', 'things')} worth checking</span></div>`
+                : ''
+            }
+          </div>
+        </div>`,
+              )
+              .join('')}</div>
+          <div class="caveat">
+            <span class="caveat__label">${drift.unchanged} unchanged, not listed</span>
+            Only what moved is shown. A behaviour losing an effect is ranked above
+            one gaining a new one — an email that quietly stopped sending is the
+            failure you cannot otherwise detect.
+          </div>`
+      }
+    </div>
+  </section>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -200,47 +478,65 @@ function behaviourList(behaviours: Behaviour[]): { html: string; shown: number; 
 // ---------------------------------------------------------------------------
 
 export function renderReport(data: ReportData): string {
-  const { behaviours, projectName } = data;
+  const { behaviours } = data;
 
-  const list = behaviourList(behaviours);
-  const silent = behaviours.length - list.ranked;
+  const ranked = [...behaviours].sort(byConsequence);
+  const linkable = new Set<string>([
+    ...ranked.slice(0, WALKTHROUGH_LIMIT).map((b) => b.id),
+    ...behaviours.filter((b) => b.gaps.length > 0).map((b) => b.id),
+  ]);
+
+  const reader = data.includeCode ? new SourceReader(data.root) : null;
+  const groups = grouped(behaviours);
+
+  const gapCount = behaviours.reduce((n, b) => n + b.gaps.length, 0);
   const configCount = behaviours.reduce(
     (n, b) => n + b.unknowns.filter((u) => u.reason === 'config-dependent').length,
     0,
   );
-  const gapCount = behaviours.reduce((n, b) => n + b.gaps.length, 0);
+  const silent = behaviours.filter((b) => b.effects.length === 0).length;
   const stamp = data.scannedAt.toISOString().slice(0, 16).replace('T', ' ');
 
   const middlewareNote = !data.middleware.present
-    ? 'This project has no middleware, so nothing checks requests before they reach your code.'
+    ? 'This project has no middleware, so nothing checks a request before it reaches your code.'
     : data.middleware.matchers === null
-      ? 'Middleware runs on every request.'
-      : `Middleware runs on ${data.middleware.matchers.length} ${plural(data.middleware.matchers.length, 'path pattern', 'path patterns')}.`;
+      ? 'Middleware runs on every request, so it may be checking things we cannot see from the route itself.'
+      : `Middleware runs on ${data.middleware.matchers.length} ${plural(data.middleware.matchers.length, 'path pattern', 'path patterns')}. Findings on paths it does not cover are stronger.`;
+
+  // A tick scale under the readout: one tick per behaviour, capped so it stays a
+  // scale rather than becoming a barcode.
+  const ticks = Math.min(behaviours.length, 60);
 
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escape(projectName)} — what this application does</title>
+<title>${escape(data.projectName)} — what this application does</title>
 <meta name="robots" content="noindex">
-<meta name="theme-color" content="#FAF8F3" media="(prefers-color-scheme:light)">
-<meta name="theme-color" content="#14130F" media="(prefers-color-scheme:dark)">
-<style>${fontFaces()}${REPORT_CSS}</style>
+<meta name="theme-color" content="#F6F8FA" media="(prefers-color-scheme:light)">
+<meta name="theme-color" content="#0B0F13" media="(prefers-color-scheme:dark)">
+<style>${fontFaces()}${TOKENS}${REPORT_CSS}</style>
 </head>
 <body>
+<a class="skip" href="#map">Skip to report</a>
 
-<header class="site-header">
-  <div class="canvas site-header__inner">
-    <span class="wordmark">
+<header class="top">
+  <div class="wrap top__bar">
+    <a class="mark" href="#map">
       <svg width="20" height="18" viewBox="0 0 20 18" aria-hidden="true" fill="none">
-        <path d="M2 2.5h13M2 6.5h13M2 14.5h13M2 17.5h13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".45"/>
+        <path d="M2 2.5h13M2 6.5h13M2 14.5h13M2 17.5h13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".4"/>
         <path d="M7 10.5h13" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round"/>
       </svg>
       eriksen
-    </span>
-    <span class="scanned">${escape(stamp)} · ${(data.elapsedMs / 1000).toFixed(1)}s</span>
-    <button class="theme-toggle" type="button" id="tt" aria-label="Switch colour theme">
+    </a>
+    <span class="top__spacer"></span>
+    <nav class="tabs" aria-label="Views">
+      <a class="tab" href="#map" aria-current="page">Map</a>
+      ${data.drift ? '<a class="tab" href="#drift">Drift</a>' : ''}
+    </nav>
+    <span class="meta">${escape(stamp)}</span>
+    <button class="toggle" type="button" id="tt" aria-label="Switch colour theme">
       <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
         <circle cx="7.5" cy="7.5" r="3.4" stroke="currentColor" stroke-width="1.3"/>
         <path d="M7.5 1v1.6M7.5 12.4V14M14 7.5h-1.6M2.6 7.5H1M12.1 2.9l-1.1 1.1M4 11l-1.1 1.1M12.1 12.1L11 11M4 4L2.9 2.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
@@ -250,120 +546,135 @@ export function renderReport(data: ReportData): string {
 </header>
 
 <main>
-  <div class="canvas">
 
-    <section class="spread">
-      <div>
-        <p class="eyebrow">${escape(data.framework)} · ${escape(projectName)}</p>
-        <h1 class="title" style="margin-top:var(--s4)">Here is what your application can actually do.</h1>
-        <div class="hero-figure">
-          <span class="hero-figure__value">${behaviours.length}</span>
-          <p class="hero-figure__caption">ways in — pages people can open, endpoints anything can call, and actions your forms trigger.</p>
-        </div>
+<!-- ══ MAP ══════════════════════════════════════════════════════════════ -->
+<section class="view" id="map" aria-label="Overview">
+  <div class="wrap">
+
+    <div class="col">
+      <p class="eyebrow">${escape(data.framework)} · ${escape(data.projectName)}</p>
+      <h1 class="h1" style="margin-top:var(--s4)">Here is what your application can actually do.</h1>
+
+      <div class="readout">
+        <span class="readout__value">${behaviours.length}</span>
+        <span class="readout__scale" aria-hidden="true">${'<i></i>'.repeat(ticks)}</span>
+        <p class="readout__caption">ways in — pages people can open, endpoints anything
+        can call, and actions your forms trigger.</p>
       </div>
-      <aside class="rail">
-        <div class="note">
-          <span class="note__label">This scan</span>
-          <dl>
-            <dt>Ways in</dt><dd>${behaviours.length}</dd>
-            <dt>Worth checking</dt><dd>${gapCount}</dd>
-            <dt>Config-dependent</dt><dd>${configCount}</dd>
-            <dt>Import hops</dt><dd>${data.traceDepth}</dd>
-          </dl>
-        </div>
-        <div class="note note--caveat">
-          <span class="note__label">Read this first</span>
-          This is read from your code without running it. A path decided at
-          runtime is invisible to it, so absence of a finding is not proof of
-          absence.
-        </div>
-      </aside>
+    </div>
+
+    <div class="stats">
+      <div class="stat${gapCount > 0 ? ' stat--alert' : ' stat--ok'}">
+        <div class="stat__label">Worth checking</div>
+        <div class="stat__value">${gapCount}</div>
+      </div>
+      <div class="stat">
+        <div class="stat__label">Config-dependent</div>
+        <div class="stat__value">${configCount}</div>
+      </div>
+      <div class="stat">
+        <div class="stat__label">Import hops read</div>
+        <div class="stat__value">${data.traceDepth}</div>
+      </div>
+      <div class="stat">
+        <div class="stat__label">Scan time</div>
+        <div class="stat__value">${(data.elapsedMs / 1000).toFixed(1)}s</div>
+      </div>
+    </div>
+
+    <div class="caveat caveat--accent">
+      <span class="caveat__label">Read this first</span>
+      This was read from your code <strong>without running it</strong>. A path chosen at
+      runtime is invisible to it, so the absence of a finding is not proof that
+      nothing is there.
+    </div>
+
+    <!-- what it can do -->
+    <section class="section">
+      <div class="section__head">
+        <h2 class="h2">What it can do</h2>
+        <span class="section__index">by ways in</span>
+      </div>
+      ${capabilityBars(behaviours)}
+      <div class="caveat">
+        <span class="caveat__label">Why these three come first</span>
+        Deleting data, moving money and changing who has access are the ones that
+        cost real money or real trust when they go wrong. They sort above
+        everything else on every screen. A filled mark means consequential — it
+        does not mean broken.
+      </div>
     </section>
 
-    <div class="rule" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-
-    <section class="spread">
-      <div>
-        <h2 class="section-heading">What it can do</h2>
-        <p class="lead" style="margin-top:var(--s3)">Counted by ways in, with the consequential ones first.</p>
-        ${capabilityBars(behaviours)}
+    <!-- findings -->
+    <section class="section">
+      <div class="section__head">
+        <h2 class="h2">${gapCount > 0 ? `${gapCount} ${plural(gapCount, 'thing', 'things')} worth checking` : 'Nothing looked wrong'}</h2>
+        ${gapCount > 0 ? '<span class="section__index">most serious first</span>' : ''}
       </div>
-      <aside class="rail">
-        <div class="note">
-          <span class="note__label">Why these first</span>
-          Deleting data, moving money and changing who has access are the three
-          that cost real money or real trust when they go wrong. They sort above
-          everything else, always.
-        </div>
-      </aside>
+      ${findings(behaviours, linkable)}
+      <div class="caveat">
+        <span class="caveat__label">Middleware</span>
+        ${escape(middlewareNote)}
+      </div>
     </section>
 
-    <div class="rule" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-
-    <section class="spread">
-      <div>
-        <h2 class="section-heading">${gapCount > 0 ? `${gapCount} ${plural(gapCount, 'thing', 'things')} worth checking` : 'Nothing looked wrong'}</h2>
-        ${findings(behaviours)}
+    <!-- everything, grouped -->
+    <section class="section">
+      <div class="section__head">
+        <h2 class="h2">Every way in</h2>
+        <span class="section__index">${groups.length} ${plural(groups.length, 'group', 'groups')} · ranked by consequence</span>
       </div>
-      <aside class="rail">
-        <div class="note">
-          <span class="note__label">Middleware</span>
-          ${escape(middlewareNote)}
-        </div>
-        <div class="note note--caveat">
-          <span class="note__label">Every finding can be wrong</span>
-          Each one says what would make it a false alarm. A guard reached through
-          code we could not follow would look exactly like a missing guard.
-        </div>
-      </aside>
-    </section>
-
-    <div class="rule" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-
-    <section class="spread">
-      <div>
-        <h2 class="section-heading">Worth looking at first</h2>
-        <p class="lead" style="margin-top:var(--s3)">
-          ${list.shown === list.ranked
-            ? 'Ranked by consequence rather than by size.'
-            : `The top ${list.shown} of ${list.ranked}, ranked by consequence rather than by size — a twelve-line delete endpoint outranks a four-hundred-line settings page.`}
-        </p>
-        ${list.html}
-      </div>
-      <aside class="rail">
-        <div class="note">
-          <span class="note__label">Reading this</span>
-          A filled dot is consequential. "Probably" means we inferred it from a
-          name rather than a known library call.
-        </div>
-        ${silent > 0
-          ? `<div class="note note--caveat">
-              <span class="note__label">${silent} not shown</span>
-              We found no effects in ${silent} ${plural(silent, 'way in', 'ways in')}. Some genuinely do
-              nothing. The rest do their work further than ${data.traceDepth} import hops away, or
-              through code we cannot follow.
+      <p class="lead" style="margin-top:var(--s4)">Grouped, and ranked by what a
+      behaviour can do rather than by how big it is — a twelve-line delete endpoint
+      outranks a four-hundred-line settings page.</p>
+      ${groupList(groups, linkable)}
+      ${
+        silent > 0
+          ? `<div class="caveat">
+              <span class="caveat__label">${silent} with nothing found</span>
+              We found no effects in ${silent} of these. Some genuinely do nothing — a
+              static page is just a page. The rest do their work further than
+              ${data.traceDepth} import hops away, or through code we cannot follow.
+              Nothing found is not the same as nothing there.
             </div>`
-          : ''}
-      </aside>
+          : ''
+      }
     </section>
 
   </div>
+</section>
+
+<!-- ══ WALKTHROUGHS ═════════════════════════════════════════════════════ -->
+${ranked
+  .filter((b) => linkable.has(b.id))
+  .map((b) => walkthrough(b, reader))
+  .join('')}
+
+<!-- ══ DRIFT ════════════════════════════════════════════════════════════ -->
+${data.drift ? driftView(data.drift) : ''}
+
 </main>
 
-<footer class="site-footer">
-  <div class="canvas">
-    <p><strong>Everything here was read locally.</strong> Your code was never uploaded, and this file
-    contains no scripts that call anywhere. It works offline, forever.</p>
-    <p>${data.skipped.length > 0
-      ? `${data.skipped.length} ${plural(data.skipped.length, 'file was', 'files were')} unreadable to us — a limitation on our side, not a problem with your code.`
-      : 'Every file we found was readable.'}</p>
-    <p style="font-family:var(--font-data);font-size:.8125rem;color:var(--ink-faint)">
-      ${escape(data.root)}
-    </p>
+<footer class="foot">
+  <div class="wrap">
+    <p><strong>Everything here was read locally.</strong> Your code was never uploaded, and
+    this file makes no network requests of any kind. Disconnect and it still works.</p>
+    ${
+      data.includeCode
+        ? '<p>Walkthroughs include short excerpts of your source so each step can be read in context. That makes this file <strong>shareable but not public</strong> — run with <code>--no-code</code> if you intend to send it to someone.</p>'
+        : '<p>Source excerpts were omitted (<code>--no-code</code>).</p>'
+    }
+    <p>${
+      data.skipped.length > 0
+        ? `${data.skipped.length} ${plural(data.skipped.length, 'file was', 'files were')} unreadable to us — a limitation on our side, not a problem with your code.`
+        : 'Every file we found was readable.'
+    }</p>
+    <p class="foot__path">${escape(data.root)}</p>
   </div>
 </footer>
 
 <script>
+/* The only script in this document. Everything else is CSS. */
 (function(){
   var r=document.documentElement,b=document.getElementById('tt');
   try{var t=localStorage.getItem('eriksen-theme');if(t)r.setAttribute('data-theme',t)}catch(e){}
@@ -373,6 +684,19 @@ export function renderReport(data: ReportData): string {
     r.setAttribute('data-theme',next);
     try{localStorage.setItem('eriksen-theme',next)}catch(e){}
   });
+  /* Keep the tab highlight honest as the hash changes. */
+  function sync(){
+    var h=location.hash||'#map';
+    document.querySelectorAll('.tab').forEach(function(t){
+      if(t.getAttribute('href')===h)t.setAttribute('aria-current','page');
+      else t.removeAttribute('aria-current');
+    });
+    if(h.indexOf('#wt-')===0){
+      var m=document.querySelector('.tab[href="#map"]');
+      if(m)m.setAttribute('aria-current','page');
+    }
+  }
+  addEventListener('hashchange',sync);sync();
 })();
 </script>
 </body>
