@@ -4,10 +4,10 @@
 # different source — nothing here is fabricated.
 set -e
 cd "$(dirname "$0")"
-F=fixtures/gapdemo/app/actions.ts
-rm -rf fixtures/gapdemo/.eriksen
+F=tests/fixtures/gapdemo/app/actions.ts
+rm -rf tests/fixtures/gapdemo/.eriksen
 
-scan() { npx tsx src/cli.ts scan fixtures/gapdemo --no-open --no-report > /dev/null 2>&1; }
+scan() { npx tsx src/cli.ts scan tests/fixtures/gapdemo --no-open --no-report > /dev/null 2>&1; }
 
 # ── 1. the starting point ────────────────────────────────────────────────
 cat > "$F" <<'EOF'

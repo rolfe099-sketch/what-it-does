@@ -1,14 +1,34 @@
 {
   "name": "eriksen",
-  "version": "0.0.1",
-  "private": true,
+  "version": "0.1.0",
+  "description": "Shows you what software you didn't write actually does, and tells you when that changes. Runs locally; your code never leaves the machine.",
   "type": "module",
-  "description": "Shows you what software you didn't write actually does, and tells you when that changes.",
-  "bin": { "eriksen": "./dist/cli.js" },
+  "license": "MIT",
+  "bin": {
+    "eriksen": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "design/fonts",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "static-analysis",
+    "nextjs",
+    "codebase",
+    "documentation",
+    "dependency-graph"
+  ],
   "scripts": {
     "dev": "tsx src/cli.ts",
     "build": "tsc",
-    "scan": "tsx src/cli.ts scan"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "check": "tsc --noEmit && tsc -p tsconfig.test.json && npm test",
+    "scan": "tsx src/cli.ts scan",
+    "prepublishOnly": "npm run check && npm run build"
   },
   "dependencies": {
     "typescript": "^5.9.3"

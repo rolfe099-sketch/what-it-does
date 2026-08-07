@@ -1,16 +1,22 @@
-
-!fixtures/gapdemo/
 # Dependencies and build output
-# OS / editor noise
-# Test subjects — cloned repos, not ours to commit
-.DS_Store
-.astro/
-.idea/
-.vscode/
-Thumbs.db
-dist/
-eriksen-report.html
-fixtures/
-fixtures/gapdemo/.eriksen/
 node_modules/
+dist/
+*.tgz
+
+# Cloned repos used as scan targets — not ours to commit.
+# Leading slash matters: an unanchored "fixtures/" would also ignore
+# tests/fixtures/, which we very much do want tracked.
+/fixtures/
+
+# Scan history written into fixtures by the test suite
+tests/fixtures/**/.eriksen/
+
+# Generated reports
+eriksen-report.html
 report-*.html
+
+# OS / editor noise
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/

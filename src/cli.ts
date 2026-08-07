@@ -172,27 +172,6 @@ function scan(target: string, options: ScanOptions) {
   // Two points is the minimum that can show movement.
   const timeline = updated.scans.length >= 2 ? buildTimeline(updated) : undefined;
 
-  if (options.report) {
-    const html = renderReport({
-      projectName: path.basename(root),
-      root,
-      framework: `Next.js ${detected.version ?? ''}`.trim(),
-      behaviours,
-      skipped,
-      middleware,
-      elapsedMs: elapsed,
-      scannedAt: new Date(),
-      traceDepth: DEFAULT_DEPTH,
-      drift,
-      timeline,
-      includeCode: options.includeCode,
-    });
-    const out = path.join(process.cwd(), 'eriksen-report.html');
-    fs.writeFileSync(out, html, 'utf8');
-    console.log(`
-${BOLD}Report${RESET} ${ACCENT}${out}${RESET}`);
-    if (options.open) openInBrowser(out);
-  }
 
   console.log(`${DIM}Next.js ${detected.version} · app router at ${appDir} · ${elapsed}ms${RESET}`);
 
@@ -281,6 +260,28 @@ ${BOLD}Report${RESET} ${ACCENT}${out}${RESET}`);
         `  ${DIM}${count} × ${reason} — ${UNKNOWN_GUIDANCE[reason as keyof typeof UNKNOWN_GUIDANCE].action}${RESET}`,
       );
     }
+  }
+
+  if (options.report) {
+    const html = renderReport({
+      projectName: path.basename(root),
+      root,
+      framework: `Next.js ${detected.version ?? ''}`.trim(),
+      behaviours,
+      skipped,
+      middleware,
+      elapsedMs: elapsed,
+      scannedAt: new Date(),
+      traceDepth: DEFAULT_DEPTH,
+      drift,
+      timeline,
+      includeCode: options.includeCode,
+    });
+    const out = path.join(process.cwd(), 'eriksen-report.html');
+    fs.writeFileSync(out, html, 'utf8');
+    console.log(`
+${BOLD}Report${RESET} ${ACCENT}${out}${RESET}`);
+    if (options.open) openInBrowser(out);
   }
 
   console.log('');

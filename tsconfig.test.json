@@ -1,0 +1,10 @@
+{
+  "//": "Typechecks the test suite as well as the source. The build config deliberately covers src/ only, so without this the tests compile at runtime via tsx and their type errors never surface.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "tests/**/*.ts"],
+  "exclude": ["node_modules", "dist", "fixtures", "tests/fixtures"]
+}
