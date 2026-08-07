@@ -19,6 +19,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import ts from 'typescript';
 import type { SourceRef, Trigger, Unknown } from '../../model.js';
+import { NO_MIDDLEWARE, parseMiddlewareConfig, type MiddlewareInfo } from './middleware.js';
 
 /** Directories that never contain application entry points. */
 const IGNORED_DIRS = new Set([
@@ -36,6 +37,8 @@ export interface EntryPointScan {
   appDir: string | null;
   triggers: Trigger[];
   skipped: Unknown[];
+  /** Which paths middleware actually runs on. Used to sharpen auth findings. */
+  middleware: MiddlewareInfo;
 }
 
 // ---------------------------------------------------------------------------
@@ -356,12 +359,20 @@ export function findEntryPoints(root: string): EntryPointScan {
   }
 
   // --- Middleware, which sits at the project root, not inside app/ --------
+  let middleware: MiddlewareInfo = NO_MIDDLEWARE;
+
   for (const candidate of ['middleware.ts', 'middleware.js', 'src/middleware.ts', 'src/middleware.js']) {
     const full = path.join(root, ...candidate.split('/'));
     if (!fs.existsSync(full)) continue;
+
+    const parsed = readOrSkip(full);
+    const matchers = parsed ? parseMiddlewareConfig(parsed.sourceFile) : null;
+    middleware = { present: true, matchers };
+
     triggers.push({
       kind: 'middleware',
-      urlPath: '*',
+      // Show what it actually covers rather than a bare wildcard.
+      urlPath: matchers === null ? '*' : matchers.join(', '),
       source: { file: candidate, line: 1 },
     });
     break;
@@ -395,5 +406,5 @@ export function findEntryPoints(root: string): EntryPointScan {
     }
   }
 
-  return { appDir, triggers, skipped };
+  return { appDir, triggers, skipped, middleware };
 }

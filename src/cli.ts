@@ -91,7 +91,7 @@ function scan(target: string) {
   }
 
   const started = Date.now();
-  const { appDir, triggers, skipped } = findEntryPoints(root);
+  const { appDir, triggers, skipped, middleware } = findEntryPoints(root);
 
   if (!appDir) {
     console.error(`\n${BOLD}No app directory found.${RESET}`);
@@ -101,7 +101,7 @@ function scan(target: string) {
     process.exit(1);
   }
 
-  const { behaviours } = buildBehaviours(root, triggers);
+  const { behaviours } = buildBehaviours(root, triggers, middleware);
   const elapsed = Date.now() - started;
 
   console.log(`${DIM}Next.js ${detected.version} · app router at ${appDir} · ${elapsed}ms${RESET}`);

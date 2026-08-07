@@ -28,6 +28,14 @@ export interface EffectPattern {
    * `chain`. `from('users')` is index 0, so the table name gets captured.
    */
   labelArgFrom?: number;
+  /**
+   * Take the label from the chain link BEFORE the match rather than from an
+   * argument. Prisma and similar ORMs name the model as a property —
+   * `prisma.passwordResetToken.findFirst()` — so the useful word is in the
+   * chain, not in the parentheses. Without this the description degrades to
+   * "Reads the first matching record" and the model name is lost.
+   */
+  labelFromPreviousLink?: boolean;
   /** `{arg}` is replaced by the captured argument, or dropped if absent. */
   describe: string;
   confidence: 'certain' | 'likely';
@@ -113,14 +121,16 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
   {
     chain: ['deleteMany'],
     kind: 'deletes-data',
-    describe: 'Deletes multiple records at once',
+    labelFromPreviousLink: true,
+    describe: 'Deletes multiple rows from {arg}',
     confidence: 'certain',
   },
   {
     chain: ['delete'],
     root: /prisma|db|client/i,
     kind: 'deletes-data',
-    describe: 'Deletes a record',
+    labelFromPreviousLink: true,
+    describe: 'Deletes a row from {arg}',
     confidence: 'certain',
   },
   {
@@ -302,34 +312,39 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
   {
     chain: ['createMany'],
     kind: 'writes-data',
-    describe: 'Creates multiple records at once',
+    labelFromPreviousLink: true,
+    describe: 'Adds multiple rows to {arg}',
     confidence: 'certain',
   },
   {
     chain: ['updateMany'],
     kind: 'writes-data',
-    describe: 'Updates multiple records at once',
+    labelFromPreviousLink: true,
+    describe: 'Changes multiple rows in {arg}',
     confidence: 'certain',
   },
   {
     chain: ['upsert'],
     root: /prisma|db|client/i,
     kind: 'writes-data',
-    describe: 'Creates or updates a record',
+    labelFromPreviousLink: true,
+    describe: 'Adds or changes a row in {arg}',
     confidence: 'certain',
   },
   {
     chain: ['create'],
     root: /prisma|db/i,
     kind: 'writes-data',
-    describe: 'Creates a record',
+    labelFromPreviousLink: true,
+    describe: 'Adds a row to {arg}',
     confidence: 'likely',
   },
   {
     chain: ['update'],
     root: /prisma|db/i,
     kind: 'writes-data',
-    describe: 'Updates a record',
+    labelFromPreviousLink: true,
+    describe: 'Changes a row in {arg}',
     confidence: 'likely',
   },
   {
@@ -430,19 +445,22 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
   {
     chain: ['findMany'],
     kind: 'reads-data',
-    describe: 'Reads multiple records',
+    labelFromPreviousLink: true,
+    describe: 'Reads rows from {arg}',
     confidence: 'certain',
   },
   {
     chain: ['findUnique'],
     kind: 'reads-data',
-    describe: 'Reads one record',
+    labelFromPreviousLink: true,
+    describe: 'Reads one row from {arg}',
     confidence: 'certain',
   },
   {
     chain: ['findFirst'],
     kind: 'reads-data',
-    describe: 'Reads the first matching record',
+    labelFromPreviousLink: true,
+    describe: 'Reads the first matching row from {arg}',
     confidence: 'certain',
   },
 

@@ -21,6 +21,13 @@ import type { Resolver } from './resolve.js';
 
 export const DEFAULT_DEPTH = 3;
 
+/**
+ * Ceiling on distinct effects tracked per trace node. Reached only by hub files
+ * that touch most of a large codebase — exactly the nodes whose output nobody
+ * could read anyway.
+ */
+const MAX_EFFECTS_PER_NODE = 60;
+
 export interface TraceResult {
   effects: Effect[];
   unknowns: Unknown[];
@@ -175,15 +182,24 @@ function findDeclaringFile(
   seen: Set<string> = new Set(),
 ): { file: string; range: { pos: number; end: number } } | null {
   const key = `${repoPath}#${name}`;
+
+  const cached = context.declarations.get(key);
+  if (cached !== undefined) return cached;
+
   if (seen.has(key)) return null; // barrels can be circular
   seen.add(key);
 
+  const remember = (value: { file: string; range: { pos: number; end: number } } | null) => {
+    context.declarations.set(key, value);
+    return value;
+  };
+
   const sourceFile = context.sources.get(repoPath);
-  if (!sourceFile) return null;
+  if (!sourceFile) return remember(null);
 
   const local = rangeOfSymbol(sourceFile, name);
-  if (local) return { file: repoPath, range: local };
-  if (budget <= 0) return null;
+  if (local) return remember({ file: repoPath, range: local });
+  if (budget <= 0) return null; // budget-limited: do not cache a partial answer
 
   for (const statement of sourceFile.statements) {
     if (!ts.isExportDeclaration(statement) || !statement.moduleSpecifier) continue;
@@ -198,16 +214,16 @@ function findDeclaringFile(
         if (element.name.text !== name) continue;
         const originalName = (element.propertyName ?? element.name).text;
         const found = findDeclaringFile(context, resolved, originalName, budget - 1, seen);
-        if (found) return found;
+        if (found) return remember(found);
       }
     } else if (!statement.exportClause) {
       // export * from './admin'
       const found = findDeclaringFile(context, resolved, name, budget - 1, seen);
-      if (found) return found;
+      if (found) return remember(found);
     }
   }
 
-  return null;
+  return remember(null);
 }
 
 export interface TraceContext {
@@ -216,6 +232,16 @@ export interface TraceContext {
   resolver: Resolver;
   /** Memo across the whole scan — helpers get called from many places. */
   memo: Map<string, TraceResult>;
+  /**
+   * Where each symbol is declared, cached.
+   *
+   * Barrel resolution walks every statement of every file it passes through,
+   * and it runs for every imported symbol at every node. Uncached it dominated
+   * the whole scan: a 19-route project went from 250ms to 10 seconds and a
+   * monorepo to nearly three minutes. Symbol declarations do not move during a
+   * scan, so this is a pure win.
+   */
+  declarations: Map<string, { file: string; range: { pos: number; end: number } } | null>;
   maxDepth: number;
 }
 
@@ -224,7 +250,14 @@ export function createTraceContext(
   resolver: Resolver,
   maxDepth = DEFAULT_DEPTH,
 ): TraceContext {
-  return { root, sources: new SourceCache(root), resolver, memo: new Map(), maxDepth };
+  return {
+    root,
+    sources: new SourceCache(root),
+    resolver,
+    memo: new Map(),
+    declarations: new Map(),
+    maxDepth,
+  };
 }
 
 /**
@@ -260,10 +293,35 @@ export function traceFrom(
     };
   }
 
+  /**
+   * Accumulate into maps rather than arrays.
+   *
+   * The obvious version — push everything into an array, dedupe at the end —
+   * is quadratic on a large repo. Every node merges its children's full effect
+   * lists, so a shared helper's effects get copied and re-deduped once per
+   * ancestor. On dub that took 57 seconds. Keying by identity as we go makes
+   * each merge a set union instead.
+   */
+  const effectMap = new Map<string, Effect>();
+  const unknownMap = new Map<string, Unknown>();
+
+  const addEffect = (effect: Effect) => {
+    // A behaviour with hundreds of distinct effects is unreadable, and merging
+    // those sets up through every ancestor is what made a large monorepo take a
+    // minute. Capping bounds the cost and costs nothing a human would have read.
+    if (effectMap.size >= MAX_EFFECTS_PER_NODE) return;
+    const key = `${effect.kind}::${effect.description}`;
+    if (!effectMap.has(key)) effectMap.set(key, effect);
+  };
+  const addUnknown = (unknown: Unknown) => {
+    const key = `${unknown.reason}::${unknown.detail}`;
+    if (!unknownMap.has(key)) unknownMap.set(key, unknown);
+  };
+
   // Effects written directly in this range.
   const direct = detectEffects(sourceFile, repoPath, range);
-  const effects: Effect[] = [...direct.effects];
-  const unknowns: Unknown[] = [...direct.unknowns];
+  direct.effects.forEach(addEffect);
+  direct.unknowns.forEach(addUnknown);
 
   if (depth > 0) {
     const imports = collectImports(sourceFile);
@@ -281,7 +339,7 @@ export function traceFrom(
       if (resolved === 'third-party') continue;
 
       if (resolved === null) {
-        unknowns.push({
+        addUnknown({
           reason: 'unsupported',
           detail: `We could not resolve the import "${binding.specifier}", so anything it does is invisible to us.`,
           source: { file: repoPath, line: 1 },
@@ -306,30 +364,15 @@ export function traceFrom(
       }
 
       const nested = traceFrom(context, targetFile, targetRange, depth - 1, seen);
-      effects.push(...nested.effects);
-      unknowns.push(...nested.unknowns);
+      nested.effects.forEach(addEffect);
+      nested.unknowns.forEach(addUnknown);
     }
   }
 
-  const result: TraceResult = { effects: dedupe(effects), unknowns: dedupeUnknowns(unknowns) };
+  const result: TraceResult = {
+    effects: [...effectMap.values()],
+    unknowns: [...unknownMap.values()],
+  };
   context.memo.set(memoKey, result);
   return result;
-}
-
-function dedupe(effects: Effect[]): Effect[] {
-  const byKey = new Map<string, Effect>();
-  for (const effect of effects) {
-    const key = `${effect.kind}::${effect.description}`;
-    if (!byKey.has(key)) byKey.set(key, effect);
-  }
-  return [...byKey.values()];
-}
-
-function dedupeUnknowns(unknowns: Unknown[]): Unknown[] {
-  const byKey = new Map<string, Unknown>();
-  for (const unknown of unknowns) {
-    const key = `${unknown.reason}::${unknown.detail}`;
-    if (!byKey.has(key)) byKey.set(key, unknown);
-  }
-  return [...byKey.values()];
 }

@@ -134,6 +134,10 @@ function matchPattern(detected: CallChain): { pattern: EffectPattern; descriptio
     let description = pattern.describe;
     if (pattern.labelArgFrom !== undefined) {
       description = description.replace('{arg}', describeArgument(detected.args[at + pattern.labelArgFrom]));
+    } else if (pattern.labelFromPreviousLink) {
+      // prisma.passwordResetToken.findFirst() — the model is the link before.
+      const model = at > 0 ? detected.chain[at - 1] : undefined;
+      description = description.replace('{arg}', model ? `\`${model}\`` : 'a table we could not name');
     }
     return { pattern, description };
   }
@@ -297,7 +301,29 @@ export function detectEffects(
 
   visit(sourceFile);
 
-  return { effects: dedupeEffects(effects), unknowns };
+  return { effects: markCredentialReadsAsAuthChecks(dedupeEffects(effects)), unknowns };
+}
+
+/**
+ * Reading a credential record IS an authorisation check.
+ *
+ * Not every endpoint authenticates with a session. Password reset, OAuth token
+ * exchange, SCIM provisioning and API-key access all authorise by looking up a
+ * token supplied in the request — dub's `/api/auth/reset-password` validates a
+ * `passwordResetToken` and is properly protected, but a session-only model calls
+ * it unguarded and is confidently wrong.
+ *
+ * A read against a table named for credentials is strong evidence the code is
+ * establishing who is asking.
+ */
+const CREDENTIAL_TABLE = /(token|apikey|api_key|credential|secret|session|invitation|invite|magiclink|otp)/i;
+
+function markCredentialReadsAsAuthChecks(effects: Effect[]): Effect[] {
+  return effects.map((effect) =>
+    effect.kind === 'reads-data' && !effect.isAuthCheck && CREDENTIAL_TABLE.test(effect.description)
+      ? { ...effect, isAuthCheck: true, confidence: 'likely' as const }
+      : effect,
+  );
 }
 
 /**

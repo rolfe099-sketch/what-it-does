@@ -12,6 +12,7 @@ import ts from 'typescript';
 import type { Behaviour, Trigger } from '../model.js';
 import { createResolver } from './resolve.js';
 import { detectGaps } from './gaps.js';
+import type { MiddlewareInfo } from './nextjs/middleware.js';
 import { createTraceContext, traceFrom, DEFAULT_DEPTH, type TraceContext } from './trace.js';
 
 /** Span of a top-level declaration by name. */
@@ -72,14 +73,15 @@ export interface BuildOptions {
 export function buildBehaviours(
   root: string,
   triggers: Trigger[],
+  middleware: MiddlewareInfo,
   options: BuildOptions = {},
 ): { behaviours: Behaviour[]; context: TraceContext } {
   const resolver = createResolver(root);
   const context = createTraceContext(root, resolver, options.depth ?? DEFAULT_DEPTH);
 
-  // Middleware can protect endpoints in a way we do not model, so its presence
-  // softens every authorisation claim we make.
-  const gapContext = { hasMiddleware: triggers.some((t) => t.kind === 'middleware') };
+  // Middleware coverage is the main innocent explanation for a missing auth
+  // check, so gap detection needs to know which paths it actually runs on.
+  const gapContext = { middleware };
 
   const behaviours: Behaviour[] = triggers.map((trigger) => {
     const sourceFile = context.sources.get(trigger.source.file);

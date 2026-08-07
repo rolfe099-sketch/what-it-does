@@ -13,6 +13,7 @@
  */
 
 import type { Behaviour, EffectKind, Gap } from '../model.js';
+import { middlewareCovers, type MiddlewareInfo } from './nextjs/middleware.js';
 
 /**
  * Effects that genuinely require knowing who is asking.
@@ -34,28 +35,41 @@ const NEEDS_AUTHORISATION: ReadonlySet<EffectKind> = new Set(['deletes-data', 't
  * This is the signature failure of AI-generated code: a model writes a
  * plausible, well-named function and never wires up the thing the name says.
  *
- * Every pattern here is a VERB. "Email" as a noun promises nothing —
- * `updateEmail` changes an address and `signInWithEmail` identifies by one;
- * neither claims to send anything. An earlier version matched the bare noun and
- * produced confident nonsense on both.
+ * EVERY PATTERN IS ANCHORED TO THE START, and that anchor is load-bearing.
+ * The promise lives in the leading verb — what the function claims to DO. A
+ * word appearing later is almost always a noun describing WHAT it operates on:
+ *
+ *   sendWelcomeEmail   promises to send        anchored match
+ *   signInWithEmail    identifies BY email     no match, correctly
+ *   updateEmail        changes an address      no match, correctly
+ *   deleteAccount      promises to delete      anchored match
+ *
+ * An unanchored version of this list flagged both Supabase auth helpers in
+ * Vercel's own reference app for "not sending an email". Same class of error as
+ * reading a promise into a URL's resource noun.
  */
 const NAME_PROMISES: { pattern: RegExp; expects: EffectKind; noun: string }[] = [
   {
-    pattern: /(send|notify|invite|welcome|remind|dispatch|digest|newsletter)/i,
+    // "send" alone is not enough either — dub has `send-link-clicked-webhooks`,
+    // which sends webhooks. But as a LEADING verb on a server action it is a
+    // strong enough signal to be worth surfacing.
+    pattern: /^(send|notify|remind|invite|welcome|dispatch|deliver|email|mail)/i,
     expects: 'sends-email',
     noun: 'send an email',
   },
   {
-    pattern: /(delete|remove|destroy|purge|wipe|revoke)/i,
+    pattern: /^(delete|remove|destroy|purge|wipe|revoke)/i,
     expects: 'deletes-data',
     noun: 'delete something',
   },
   {
-    pattern: /(charge|checkout|subscribe|payment|billing|invoice|refund)/i,
+    // `invoice` and `billing` are deliberately absent. They name a RECORD, and
+    // viewing, listing or generating one moves no money.
+    pattern: /^(charge|checkout|subscribe|payment|refund)/i,
     expects: 'takes-payment',
     noun: 'move money',
   },
-  { pattern: /(upload|attach)/i, expects: 'writes-file', noun: 'store a file' },
+  { pattern: /^(upload|attach)/i, expects: 'writes-file', noun: 'store a file' },
 ];
 
 /**
@@ -64,17 +78,10 @@ const NAME_PROMISES: { pattern: RegExp; expects: EffectKind; noun: string }[] = 
  */
 const NOT_A_PROMISE = /(button|input|field|form|modal|dialog|icon|label|schema|type|props|config|constant)/i;
 
-/** The action part of a URL: "/api/embed/send-otp" -> "send-otp". */
-function lastSegment(urlPath: string): string {
-  const segments = urlPath.split('/').filter(Boolean);
-  // A trailing [param] is an argument, not an action — step back past it.
-  while (segments.length > 0 && segments[segments.length - 1].startsWith('[')) segments.pop();
-  return segments[segments.length - 1] ?? '';
-}
 
 export interface GapContext {
-  /** Middleware can protect endpoints invisibly, so its presence softens claims. */
-  hasMiddleware: boolean;
+  /** Which paths middleware actually runs on, so claims can be per-route. */
+  middleware: MiddlewareInfo;
 }
 
 export function detectGaps(behaviour: Behaviour, context: GapContext): Gap[] {
@@ -111,9 +118,37 @@ function unprotectedDestructive(behaviour: Behaviour, context: GapContext): Gap[
 
   const what = consequential[0].description;
 
-  const escapeHatch = context.hasMiddleware
-    ? 'This project has middleware, which may well be doing the check — we do not yet follow what middleware protects, so treat this as a prompt to confirm rather than a finding.'
-    : 'If the check happens inside a wrapper or helper we could not follow, this is a false alarm.';
+  // Middleware is the main innocent explanation for a missing check, so the
+  // strength of the claim depends on whether middleware actually runs here.
+  let coverage: string;
+  let confidence: Gap['confidence'];
+
+  if (!context.middleware.present) {
+    coverage =
+      'This project has no middleware, so nothing is checking upstream either. If the check happens inside a wrapper we could not follow, this is a false alarm.';
+    confidence = 'likely';
+  } else if (kind === 'server-action') {
+    // A server action posts to whichever page rendered it, so its middleware
+    // coverage depends on where it is used — not statically knowable.
+    coverage =
+      'Server actions post to whichever page uses them, so we cannot tell which middleware rules apply. Worth confirming by hand.';
+    confidence = 'possible';
+  } else {
+    const covered = middlewareCovers(context.middleware, behaviour.trigger.urlPath);
+    if (covered === true) {
+      coverage =
+        'Middleware does run on this path and may well be doing the check, so treat this as a prompt to confirm rather than a finding.';
+      confidence = 'possible';
+    } else if (covered === false) {
+      coverage =
+        'This project has middleware, but its matcher does NOT cover this path — so nothing is checking upstream either.';
+      confidence = 'likely';
+    } else {
+      coverage =
+        'We could not read this project\'s middleware matcher, so we cannot tell whether it runs here.';
+      confidence = 'possible';
+    }
+  }
 
   const preamble =
     kind === 'server-action'
@@ -124,9 +159,9 @@ function unprotectedDestructive(behaviour: Behaviour, context: GapContext): Gap[
     {
       kind: 'unprotected-destructive',
       summary: `${what} — with no visible check on who is asking`,
-      detail: `${preamble} Nothing in the code we followed establishes the identity or permissions of whoever triggered this. ${escapeHatch}`.trim(),
-      // Middleware is a genuine alternative explanation, so the claim softens.
-      confidence: context.hasMiddleware ? 'possible' : 'likely',
+      detail:
+        `${preamble} Nothing in the code we followed establishes the identity or permissions of whoever triggered this. ${coverage}`.trim(),
+      confidence,
       source: behaviour.trigger.source,
     },
   ];
@@ -141,27 +176,29 @@ function unprotectedDestructive(behaviour: Behaviour, context: GapContext): Gap[
  */
 function unfulfilledPromise(behaviour: Behaviour): Gap[] {
   /**
-   * A function name and a URL path are different kinds of thing.
+   * SERVER ACTIONS ONLY. This is a deliberate narrowing after the wider version
+   * failed on real code.
    *
-   * A developer who writes `sendWelcomeEmail` has made a claim, and the verb can
-   * sit anywhere in it. A URL path is an ADDRESS — `/api/invites/accept` names
-   * the resource "invites" and the action "accept", and reading a promise to
-   * send email into the resource noun produces confident nonsense.
+   * A developer who writes `sendWelcomeEmail` has made a specific claim in a
+   * name they chose. A URL path has not: it names a resource and an action
+   * ambiguously, and no rule reliably separates them. Applying promises to paths
+   * flagged dub's `/invoices/[id]` page for "not moving money" (it displays an
+   * invoice), `send-link-clicked-webhooks` for "not sending an email" (it sends
+   * webhooks) and `charge-succeeded` for "not taking payment" (it handles an
+   * event about a charge that already happened).
    *
-   * So paths only promise when the verb leads the final segment: `send-otp`
-   * counts, `invites/accept` does not.
+   * Every one of those was confidently wrong, which is the failure mode this
+   * whole file exists to avoid. Recall is worth less than precision here.
    */
-  const isAction = behaviour.trigger.kind === 'server-action';
-  const name = isAction ? behaviour.trigger.exportName : lastSegment(behaviour.trigger.urlPath);
+  if (behaviour.trigger.kind !== 'server-action') return [];
+
+  const name = behaviour.trigger.exportName;
   if (!name || NOT_A_PROMISE.test(name)) return [];
 
   const present = new Set(behaviour.effects.map((e) => e.kind));
 
   for (const promise of NAME_PROMISES) {
-    const matches = isAction
-      ? promise.pattern.test(name)
-      : new RegExp(`^${promise.pattern.source}`, 'i').test(name);
-    if (!matches) continue;
+    if (!promise.pattern.test(name)) continue;
     if (present.has(promise.expects)) continue;
 
     return [
