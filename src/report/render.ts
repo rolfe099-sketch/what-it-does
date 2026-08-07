@@ -27,6 +27,7 @@
  */
 
 import {
+  type Gap,
   CONSEQUENTIAL_EFFECTS,
   EFFECT_LABELS,
   consequenceScore,
@@ -98,6 +99,18 @@ const escape = (v: string): string =>
 const withCode = (v: string): string =>
   escape(v).replace(/`([^`]+)`/g, '<code>$1</code>');
 
+
+/** What each HTTP verb means, for a reader who has never sent one. */
+const VERB_PLAIN: Record<string, string> = {
+  GET: 'Other software asks to see something here.',
+  POST: 'Other software sends something in here.',
+  PUT: 'Other software replaces something here.',
+  PATCH: 'Other software changes something here.',
+  DELETE: 'Other software asks to remove something here.',
+  HEAD: 'Other software asks whether something is here.',
+  OPTIONS: 'Other software asks what is allowed here.',
+  ANY: 'Other software can send any kind of request here.',
+};
 
 const KIND_LABEL: Record<string, string> = {
   page: 'Page',
@@ -224,6 +237,40 @@ function capabilityBars(behaviours: Behaviour[]): string {
     .join('')}</ul>`;
 }
 
+/**
+ * The fix prompt — the bridge from finding to action.
+ *
+ * The person reading this report builds with an AI assistant and may not read
+ * code at all. For them, a finding without a next step is only a worry. This
+ * turns each finding into the next step they already know how to take: paste
+ * a prompt. The prompt carries the same honesty rules as the report — it asks
+ * the assistant to LOOK first, and to change nothing if the protection turns
+ * out to exist somewhere we could not follow.
+ */
+function aiPrompt(title: string, gap: Gap): string {
+  const ask =
+    gap.kind === 'unprotected-destructive'
+      ? `Before this code runs, verify who is making the request and that they are allowed to do this. Add the smallest check that achieves that, matching how the rest of this codebase already does authorisation. Keep every other behaviour exactly the same, and show me the change as a diff.`
+      : `The name promises something the body never does. Either implement the promised step, or rename the function so it stops promising it. Show me the change as a diff.`;
+
+  return `A static-analysis scan of this codebase flagged something worth checking.
+
+Where: ${gap.source.file}, line ${gap.source.line}
+Behaviour: ${title}
+Finding: ${gap.summary}
+
+${ask}
+
+Important: if the protection already exists somewhere the scan could not follow, do not change anything — just show me where it lives.`;
+}
+
+function promptBlock(title: string, gap: Gap): string {
+  return `<div class="prompt">
+    <div class="prompt__head"><span>Fix prompt — paste into your AI</span></div>
+    <pre class="prompt__text">${escape(aiPrompt(title, gap))}</pre>
+  </div>`;
+}
+
 function findings(behaviours: Behaviour[], linkable: Set<string>): string {
   const withGaps = behaviours.filter((b) => b.gaps.length > 0);
 
@@ -253,6 +300,7 @@ function findings(behaviours: Behaviour[], linkable: Set<string>): string {
         </div>
         <p class="finding__summary">${withCode(gap.summary)}</p>
         <p class="finding__detail">${withCode(gap.detail)}</p>
+        ${promptBlock(b.title, gap)}
         ${linkable.has(b.id) ? `<a class="finding__link" href="#${slug(b.id)}">Walk through ${escape(b.title)} →</a>` : ''}
       </div>`,
       ),
@@ -585,6 +633,14 @@ function walkthrough(
           b.trigger.methods ? ` · ${escape(b.trigger.methods.join(' '))}` : ''
         }</p>
         <h2 class="h1" style="margin-top:var(--s3)">${escape(b.title)}</h2>
+        ${
+          b.trigger.methods && b.trigger.methods.length > 0
+            ? `<p class="lead" style="margin-top:var(--s3)">${b.trigger.methods
+                .map((m) => VERB_PLAIN[m])
+                .filter(Boolean)
+                .join(' ')}</p>`
+            : ''
+        }
         <p class="meta" style="margin-top:var(--s3)">${escape(b.trigger.source.file)}:${b.trigger.source.line}</p>
       </div>
 
@@ -594,6 +650,7 @@ function walkthrough(
         <div class="finding__top"><span class="badge badge--${gap.confidence}">${gap.confidence}</span></div>
         <p class="finding__summary">${withCode(gap.summary)}</p>
         <p class="finding__detail">${withCode(gap.detail)}</p>
+        ${promptBlock(b.title, gap)}
       </div>`,
         )
         .join('')}
@@ -1146,6 +1203,35 @@ export function renderReport(data: ReportData): string {
       nothing is there.
     </div>
 
+    <details class="primer">
+      <summary>
+        <svg class="primer__chev" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+          <path d="M3 1.5L6.5 5 3 8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        If you don't read code — the nine words this report uses
+      </summary>
+      <dl class="primer__list">
+        <div><dt>Way in</dt><dd>A door into your application: a page someone opens, an
+          address other software calls, or a form that submits.</dd></div>
+        <div><dt>Endpoint</dt><dd>A door for other programs rather than people. Anything
+          that knows the address can knock — which is why who-is-asking checks matter.</dd></div>
+        <div><dt>GET · POST · DELETE</dt><dd>The kinds of knock: asking to see something,
+          sending something in, asking to remove something.</dd></div>
+        <div><dt>Table</dt><dd>Where one kind of your data lives — users, projects,
+          invoices. Losing one loses that data.</dd></div>
+        <div><dt>Outside service</dt><dd>Someone else's system your app relies on: Stripe
+          moves the money, Resend sends the email. You cannot fix their outages.</dd></div>
+        <div><dt>Middleware</dt><dd>Code that runs before every request — often the
+          doorman that checks who is asking.</dd></div>
+        <div><dt>Checks who is asking</dt><dd>The moment code verifies identity or
+          permission before acting. Its absence before a deletion is what we flag.</dd></div>
+        <div><dt>Setting</dt><dd>A value that lives outside the code, like an API key.
+          The same code can behave differently on your machine and in production.</dd></div>
+        <div><dt>file:line</dt><dd>An address in your code, like
+          <code>app/api/route.ts:12</code>. Paste it into your AI assistant and ask.</dd></div>
+      </dl>
+    </details>
+
     <!-- what it can do -->
     <section class="section">
       <div class="section__head">
@@ -1300,6 +1386,28 @@ ${data.drift ? driftView(data.drift) : ''}
     }
   }
   addEventListener('hashchange',sync);sync();
+
+  /* Copy buttons for fix prompts. Injected here rather than shipped in the
+     markup, so without JavaScript there is no dead button — just text, which
+     can still be selected and copied by hand. */
+  document.querySelectorAll('.prompt').forEach(function(box){
+    var pre=box.querySelector('.prompt__text');
+    var head=box.querySelector('.prompt__head');
+    if(!pre||!head) return;
+    var btn=document.createElement('button');
+    btn.type='button';btn.className='prompt__copy';btn.textContent='Copy';
+    btn.addEventListener('click',function(){
+      var done=function(){btn.textContent='Copied';btn.classList.add('is-done');
+        setTimeout(function(){btn.textContent='Copy';btn.classList.remove('is-done');},1600);};
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(pre.textContent).then(done,function(){});
+      }else{
+        var r=document.createRange();r.selectNodeContents(pre);
+        var sel=getSelection();sel.removeAllRanges();sel.addRange(r);
+      }
+    });
+    head.appendChild(btn);
+  });
 
   /* ── constellation: isolation + pan/zoom ──────────────────────────────
      Progressive enhancement only. Without this the map still draws, every

@@ -130,6 +130,10 @@ export const TOKENS = `
   --t-fast:110ms;
   --t-base:180ms;
   --t-draw:420ms;
+  --t-slow:600ms;    /* the constellation drawing itself */
+
+  /* blueprint grid behind the first screen */
+  --grid-cell:2rem;
 }
 
 /* ── DARK ───────────────────────────────────────────────────────────────

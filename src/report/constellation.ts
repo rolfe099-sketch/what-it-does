@@ -142,7 +142,7 @@ export function constellation(graph: ResourceNode[], resSlug: (key: string) => s
       const b = result.nodes.get(e.b);
       if (!a || !b) return '';
       const strength = e.weight / maxEdgeWeight;
-      return `<line class="cst__edge" data-a="${escape(e.a)}" data-b="${escape(e.b)}"
+      return `<line class="cst__edge" pathLength="1" data-a="${escape(e.a)}" data-b="${escape(e.b)}"
         x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}"
         stroke-width="${(0.6 + strength * 2.2).toFixed(2)}"
         opacity="${(0.12 + strength * 0.45).toFixed(2)}" />`;

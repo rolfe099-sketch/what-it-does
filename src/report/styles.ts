@@ -90,6 +90,28 @@ code{font-family:var(--font-data);font-size:.9em;
 
 main{padding-block:var(--s8) var(--s10)}
 
+/* ── the first screen sits on a blueprint grid ───────────────────────────
+   A technical drawing look for the technical drawing this is. It fades out
+   before the first section, so the working area of the page stays plain. */
+#map{position:relative}
+#map::before{content:"";position:absolute;inset:0 0 auto 0;height:38rem;z-index:-1;
+  background:
+    linear-gradient(var(--rule) var(--hair),transparent var(--hair)) 0 0/100% var(--grid-cell),
+    linear-gradient(90deg,var(--rule) var(--hair),transparent var(--hair)) 0 0/var(--grid-cell) 100%;
+  -webkit-mask-image:linear-gradient(to bottom,black,transparent 88%);
+  mask-image:linear-gradient(to bottom,black,transparent 88%);
+  pointer-events:none}
+
+/* ── reading progress, drawn along the header's bottom rule ──────────────
+   Scroll-driven, so it costs nothing and cannot drift. Browsers without
+   scroll timelines simply keep the plain hairline. */
+@supports (animation-timeline: scroll()){
+  .top::after{content:"";position:absolute;left:0;bottom:-1px;height:2px;width:100%;
+    background:var(--accent);transform-origin:0 50%;transform:scaleX(0);
+    animation:progress linear both;animation-timeline:scroll(root)}
+}
+@keyframes progress{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+
 /* ── the readout ────────────────────────────────────────────────────────
    The big number is the artwork. Mono, tabular, with a scale rule beneath
    it so it reads as an instrument value rather than marketing typography. */
@@ -105,7 +127,9 @@ main{padding-block:var(--s8) var(--s10)}
 }
 .readout__value{font-family:var(--font-data);font-size:var(--t-readout);font-weight:500;
   line-height:.9;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--ink)}
-.readout__scale{display:flex;align-items:flex-end;gap:4px;height:12px}
+.readout__scale{display:flex;align-items:flex-end;gap:4px;height:12px;
+  transform-origin:50% 100%;animation:sweep var(--t-draw) var(--ease)}
+@keyframes sweep{from{transform:scaleY(0)}}
 .readout__scale i{display:block;width:1px;height:5px;background:var(--rule-strong)}
 .readout__scale i:nth-child(5n+1){height:11px;background:var(--accent)}
 .readout__caption{font-size:var(--t-meta);color:var(--ink-muted);max-width:40ch}
@@ -145,8 +169,39 @@ main{padding-block:var(--s8) var(--s10)}
 .section{margin-top:var(--s9)}
 .section__head{border-top:var(--hair) solid var(--rule-strong);padding-top:var(--s4);
   display:flex;align-items:baseline;justify-content:space-between;gap:var(--s4);flex-wrap:wrap}
+/* Spec-sheet numbering. Generated with empty alternative text so screen
+   readers hear the heading, not the furniture. Counters restart per view. */
+.view{counter-reset:sec}
+#map{counter-reset:sec}
+.section__head::before{counter-increment:sec;
+  content:counter(sec,decimal-leading-zero) / "";
+  font-family:var(--font-data);font-size:var(--t-micro);color:var(--accent);
+  letter-spacing:var(--track-wide);align-self:center;
+  border:var(--hair) solid var(--rule-strong);border-radius:var(--radius);
+  padding:.2em .5em}
 .section__index{font-family:var(--font-data);font-size:var(--t-micro);
   letter-spacing:var(--track-wide);text-transform:uppercase;color:var(--ink-faint)}
+
+/* ── the primer ──────────────────────────────────────────────────────────
+   A legend for people who build with AI and do not read code. It teaches the
+   report's vocabulary once, in plain words, then stays out of the way —
+   closed by default, keyboard-native, printable. */
+.primer{margin-top:var(--s4);border:var(--hair) solid var(--rule);
+  border-radius:var(--radius);background:var(--surface);max-width:var(--col-main)}
+.primer>summary{display:flex;align-items:center;gap:var(--s3);cursor:pointer;
+  padding:var(--s4);list-style:none;font-family:var(--font-data);
+  font-size:var(--t-small);letter-spacing:.04em;color:var(--ink-muted)}
+.primer>summary::-webkit-details-marker{display:none}
+.primer>summary:hover{color:var(--accent)}
+.primer__chev{flex:none;transition:transform var(--t-fast) var(--ease)}
+.primer[open] .primer__chev{transform:rotate(90deg)}
+.primer__list{display:grid;grid-template-columns:1fr;gap:var(--s4);
+  padding:0 var(--s4) var(--s5);margin:0}
+@media (min-width:48rem){.primer__list{grid-template-columns:1fr 1fr}}
+.primer__list>div{border-top:var(--hair) solid var(--rule);padding-top:var(--s3)}
+.primer__list dt{font-family:var(--font-data);font-size:var(--t-tiny);font-weight:500;
+  letter-spacing:var(--track-wide);text-transform:uppercase;color:var(--ink)}
+.primer__list dd{margin:var(--s1) 0 0;font-size:var(--t-meta);color:var(--ink-muted)}
 
 /* ── capability bars ────────────────────────────────────────────────── */
 .bars{margin-top:var(--s6);display:flex;flex-direction:column;gap:var(--s5);
@@ -181,6 +236,29 @@ main{padding-block:var(--s8) var(--s10)}
 .finding__detail{font-size:var(--t-meta);color:var(--ink-muted);max-width:var(--measure)}
 .finding__link{display:inline-block;margin-top:var(--s4);font-family:var(--font-data);
   font-size:var(--t-small);letter-spacing:.04em}
+
+/* ── the fix prompt ──────────────────────────────────────────────────────
+   The reader of this report builds with an AI assistant. A finding they
+   cannot act on is a worry; a finding with a prompt attached is a task. The
+   dashed rule marks it as something to TAKE, like a coupon — and the copy
+   button is injected by script, so without JavaScript this is simply text
+   that can be selected, which still works. */
+.prompt{margin-top:var(--s4);border:var(--hair) dashed var(--rule-strong);
+  border-radius:var(--radius);background:var(--sunk);overflow:hidden}
+.prompt__head{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  padding:var(--s2) var(--s3);border-bottom:var(--hair) dashed var(--rule-strong);
+  font-family:var(--font-data);font-size:var(--t-micro);
+  letter-spacing:var(--track-wide);text-transform:uppercase;color:var(--ink-muted)}
+.prompt__copy{font-family:var(--font-data);font-size:var(--t-micro);
+  letter-spacing:var(--track-wide);text-transform:uppercase;cursor:pointer;
+  background:var(--surface);color:var(--ink-muted);
+  border:var(--hair) solid var(--rule-strong);border-radius:var(--radius);
+  padding:.3em .7em}
+.prompt__copy:hover{color:var(--accent);border-color:var(--accent)}
+.prompt__copy.is-done{color:var(--ok);border-color:var(--ok)}
+.prompt__text{margin:0;padding:var(--s3) var(--s4);overflow-x:auto;
+  font-family:var(--font-data);font-size:var(--t-small);line-height:1.65;
+  color:var(--ink-muted);white-space:pre-wrap}
 
 .badge{font-family:var(--font-data);font-size:var(--t-micro);letter-spacing:var(--track-wide);
   text-transform:uppercase;padding:.2em .5em;border-radius:3px;
@@ -372,7 +450,12 @@ body:has(.view:target) #map{display:none}
 .cst__grid{stroke:var(--rule);fill:none}
 .cst__grid-mark{stroke:var(--rule-strong)}
 .cst__edge{stroke:var(--rule-strong);transition:opacity var(--t-fast) var(--ease),
-  stroke var(--t-fast) var(--ease)}
+  stroke var(--t-fast) var(--ease);
+  /* pathLength=1 in the markup normalises every edge, so one rule draws them
+     all in together when the view first opens. The resting state is a solid
+     line: if the animation never runs, the map is simply already drawn. */
+  stroke-dasharray:1;stroke-dashoffset:0;animation:edgedraw var(--t-slow) var(--ease)}
+@keyframes edgedraw{from{stroke-dashoffset:1}}
 .cst__dot{fill:var(--ink-faint);transition:fill var(--t-fast) var(--ease),
   r var(--t-base) var(--ease)}
 /* The halo scales with the node, so reach glows in proportion to itself. */
@@ -448,7 +531,8 @@ body:has(.view:target) #map{display:none}
 .sc__svg{display:block;width:100%;height:auto;max-height:78vh;touch-action:none;cursor:grab}
 .sc__svg.is-turning{cursor:grabbing}
 
-.sc__edge{stroke:var(--rule-strong)}
+.sc__edge{stroke:var(--rule-strong);stroke-dasharray:1;stroke-dashoffset:0;
+  animation:edgedraw var(--t-slow) var(--ease)}
 .sc__dot{fill:var(--ink-faint)}
 .sc__hit{fill:transparent}
 .sc__node{cursor:pointer;outline:none}
@@ -640,6 +724,20 @@ a.wave__item:hover{border-color:var(--accent);color:var(--accent)}
 @media (max-width:24rem){
   .readout__value{font-size:2.5rem}
 }
+
+/* Entry reveals, scroll-driven. Gated twice: on support, because without a
+   scroll timeline the animation would fire once at load for content nobody
+   has scrolled to yet; and on motion preference, because the global duration
+   kill switch cannot stop an animation whose clock is the scroll position. */
+@supports (animation-timeline: view()){
+  @media (prefers-reduced-motion:no-preference){
+    .section,.finding,.clear,.change,.wave{
+      animation:rise var(--t-base) var(--ease) both;
+      animation-timeline:view();
+      animation-range:entry 0% entry 36%}
+  }
+}
+@keyframes rise{from{opacity:.001;transform:translateY(10px)}to{opacity:1;transform:none}}
 
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}

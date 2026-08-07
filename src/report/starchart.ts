@@ -122,7 +122,7 @@ export function starChart(graph: ResourceNode[], resSlug: (key: string) => strin
       // nodes they join rather than floating on top of everything.
       const near = Math.max(a.p.scale, b.p.scale);
       const opacity = (0.06 + strength * 0.34) * Math.min(1, near);
-      return `<line class="sc__edge" data-a="${escape(e.a)}" data-b="${escape(e.b)}"
+      return `<line class="sc__edge" pathLength="1" data-a="${escape(e.a)}" data-b="${escape(e.b)}"
         x1="${a.p.x.toFixed(1)}" y1="${a.p.y.toFixed(1)}"
         x2="${b.p.x.toFixed(1)}" y2="${b.p.y.toFixed(1)}"
         stroke-width="${(0.5 + strength * 1.8).toFixed(2)}"
