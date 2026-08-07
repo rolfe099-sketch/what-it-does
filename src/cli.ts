@@ -17,10 +17,14 @@ import { renderReport } from './report/render.js';
 import {
   snapshot,
   diff,
+  diffSnapshots,
   appendToHistory,
   buildTimeline,
+  SNAPSHOT_VERSION,
   type History,
+  type Snapshot,
 } from './report/drift.js';
+import { renderComment } from './report/comment.js';
 import {
   CONSEQUENTIAL_EFFECTS,
   EFFECT_LABELS,
@@ -93,6 +97,14 @@ interface ScanOptions {
   open: boolean;
   /** Embed source excerpts in walkthroughs. */
   includeCode: boolean;
+  /**
+   * Emit the snapshot as JSON on stdout and nothing else.
+   *
+   * The machine-readable half. Two of these — one per branch — are everything
+   * the `diff` command needs, which is how a CI job compares two branches
+   * without either scan ever seeing the other's source.
+   */
+  json: boolean;
 }
 
 /**
@@ -106,7 +118,10 @@ function readHistory(root: string): History | null {
   try {
     const raw = fs.readFileSync(path.join(root, SNAPSHOT_DIR, HISTORY_FILE), 'utf8');
     const parsed = JSON.parse(raw);
-    return parsed?.version === 1 && Array.isArray(parsed.scans) ? (parsed as History) : null;
+    // A version we do not recognise is discarded rather than migrated. The
+    // cost is one scan with no comparison; the alternative is guessing at the
+    // meaning of an older shape and reporting drift that never happened.
+    return parsed?.version === 2 && Array.isArray(parsed.scans) ? (parsed as History) : null;
   } catch {
     return null;
   }
@@ -203,7 +218,9 @@ ${DIM}Scan one directly:${RESET} what-it-does ${found[0].dir}`);
 
 function scan(target: string, options: ScanOptions) {
   const root = path.resolve(target);
-  console.log(`${DIM}Scanning ${root}${RESET}`);
+  // Progress belongs on stderr in machine mode, where stdout is the payload.
+  if (options.json) console.error(`${DIM}Scanning ${root}${RESET}`);
+  else console.log(`${DIM}Scanning ${root}${RESET}`);
 
   const started = Date.now();
   const detected = detectFramework(root);
@@ -216,6 +233,19 @@ function scan(target: string, options: ScanOptions) {
 
   const { behaviours } = buildBehaviours(root, triggers, middleware);
   const elapsed = Date.now() - started;
+
+  /**
+   * Machine mode stops here.
+   *
+   * Nothing but JSON reaches stdout, so the output can be redirected straight
+   * into a file. History is deliberately NOT written: a CI checkout is
+   * disposable, and leaving a new untracked directory behind would dirty a
+   * working tree that later steps may check.
+   */
+  if (options.json) {
+    process.stdout.write(JSON.stringify(snapshot(behaviours), null, 2) + '\n');
+    return;
+  }
 
   // Compare against the last scan, then remember this one.
   const history = readHistory(root);
@@ -299,7 +329,7 @@ function scan(target: string, options: ScanOptions) {
   );
   if (configDependent.length > 0) {
     heading(
-      `${configDependent.length} ${plural(configDependent.length, 'place', 'places')} that depend on configuration`,
+      `${configDependent.length} ${plural(configDependent.length, 'place', 'places')} that ${plural(configDependent.length, 'depends', 'depend')} on configuration`,
     );
     console.log(
       `  ${DIM}${plural(configDependent.length, 'This', 'These')} may behave differently in production than ${plural(configDependent.length, 'it does', 'they do')} locally.${RESET}`,
@@ -345,6 +375,97 @@ ${BOLD}Report${RESET} ${ACCENT}${out}${RESET}`);
 }
 
 /**
+ * Compare two snapshots written by `--json`.
+ *
+ * The two sides never meet except as data. That is what makes the CI story
+ * work: a job scans the base branch, scans the head branch, and compares the
+ * results, with no step that needs both working trees at once and nothing
+ * leaving the runner.
+ */
+function readSnapshot(file: string): Snapshot {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(path.resolve(file), 'utf8');
+  } catch {
+    console.error(`${BOLD}Cannot read${RESET} ${file}`);
+    console.error(`${DIM}Write one with: npx what-it-does --json > ${path.basename(file)}${RESET}`);
+    process.exit(2);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    console.error(`${BOLD}${file} is not valid JSON.${RESET}`);
+    process.exit(2);
+  }
+
+  const candidate = parsed as Partial<Snapshot>;
+  if (candidate?.version !== SNAPSHOT_VERSION || !Array.isArray(candidate.behaviours)) {
+    console.error(`${BOLD}${file} is not a snapshot this version can read.${RESET}`);
+    console.error(
+      `${DIM}Expected version ${SNAPSHOT_VERSION}, found ${String(candidate?.version)}. Both sides must come from the same version.${RESET}`,
+    );
+    process.exit(2);
+  }
+  return candidate as Snapshot;
+}
+
+interface DiffOptions {
+  markdown: boolean;
+  json: boolean;
+  /** Exit non-zero when the comparison turns up a new finding. */
+  failOnNew: boolean;
+  comparedTo?: string;
+}
+
+function runDiff(beforeFile: string, afterFile: string, options: DiffOptions) {
+  const result = diffSnapshots(readSnapshot(beforeFile), readSnapshot(afterFile));
+  const newGaps = result.changes.reduce((n, c) => n + c.newGaps.length, 0);
+
+  if (options.json) {
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+  } else if (options.markdown) {
+    process.stdout.write(renderComment(result, { comparedTo: options.comparedTo }) + '\n');
+  } else {
+    if (result.changes.length === 0) {
+      console.log(`\n${BOLD}Nothing changed.${RESET}`);
+      console.log(
+        `${DIM}${result.unchanged} ${plural(result.unchanged, 'behaviour', 'behaviours')} checked, none moved.${RESET}\n`,
+      );
+    } else {
+      heading(
+        `${result.changes.length} ${plural(result.changes.length, 'thing', 'things')} changed`,
+      );
+      for (const change of result.changes) {
+        const mark =
+          change.newGaps.length > 0
+            ? `${ALERT}▲${RESET}`
+            : change.kind === 'removed'
+              ? `${WARN}−${RESET}`
+              : `${ACCENT}●${RESET}`;
+        console.log(`\n  ${mark} ${BOLD}${change.title}${RESET}${DIM}  ${change.kind}${RESET}`);
+        for (const gap of change.newGaps) {
+          console.log(`    ${ALERT}${gap.summary}${RESET}`);
+          console.log(`    ${DIM}${gap.source}${RESET}`);
+        }
+        for (const lost of change.lost) console.log(`    ${WARN}−${RESET} ${lost}`);
+        for (const gained of change.gained) console.log(`    ${ACCENT}+${RESET} ${gained}`);
+      }
+      console.log(
+        `
+${DIM}${result.unchanged} other ${plural(result.unchanged, 'behaviour', 'behaviours')} unchanged.${RESET}\n`,
+      );
+    }
+  }
+
+  // The exit code is the whole point in CI: it is what turns a comment into a
+  // gate. Opt-in, because failing a build by default on a tool someone just
+  // installed is how the tool gets removed.
+  if (options.failOnNew && newGaps > 0) process.exit(1);
+}
+
+/**
  * Scanning is the only thing this does, so it is what happens by default.
  *
  * `npx what-it-does` with nothing after it reads the current directory. The
@@ -357,25 +478,54 @@ const argv = process.argv.slice(2);
 const positional = argv.filter((a) => !a.startsWith('-'));
 const wantsHelp = argv.some((a) => a === '--help' || a === '-h' || a === 'help');
 
+const flagValue = (name: string): string | undefined => {
+  const at = argv.indexOf(name);
+  return at !== -1 ? argv[at + 1] : undefined;
+};
+
 if (wantsHelp) {
   console.log(`
 ${BOLD}what it does${RESET} — shows you what software you didn't write actually does
 
-  ${BOLD}npx what-it-does${RESET}            Read the current directory
-  ${BOLD}npx what-it-does${RESET} [path]     Read somewhere else
+  ${BOLD}npx what-it-does${RESET}                    Read the current directory
+  ${BOLD}npx what-it-does${RESET} [path]             Read somewhere else
 
     --no-open     Write the report but do not open it
     --no-report   Terminal output only
     --no-code     Omit source excerpts, for a report you intend to share
+    --json        Print the snapshot as JSON, and nothing else
+
+  ${BOLD}npx what-it-does diff${RESET} [a] [b]       Compare two snapshots
+
+    --markdown    Render as a pull request comment
+    --json        Print the comparison as JSON
+    --fail-on-new Exit 1 if the comparison finds something new
+    --compared-to What to call the left side, e.g. "main"
 
 Writes a single self-contained HTML file. No server, no network, no account —
 your code never leaves this machine, and neither does the report.
 `);
+} else if (positional[0] === 'diff') {
+  const [before, after] = positional.slice(1);
+  if (!before || !after) {
+    console.error(`\n${BOLD}diff needs two snapshots.${RESET}`);
+    console.error(`${DIM}npx what-it-does --json > before.json${RESET}`);
+    console.error(`${DIM}npx what-it-does --json > after.json${RESET}`);
+    console.error(`${DIM}npx what-it-does diff before.json after.json${RESET}\n`);
+    process.exit(2);
+  }
+  runDiff(before, after, {
+    markdown: argv.includes('--markdown'),
+    json: argv.includes('--json'),
+    failOnNew: argv.includes('--fail-on-new'),
+    comparedTo: flagValue('--compared-to'),
+  });
 } else {
   const target = positional[0] === 'scan' ? positional[1] : positional[0];
   scan(target ?? process.cwd(), {
     report: !argv.includes('--no-report'),
     open: !argv.includes('--no-open'),
     includeCode: !argv.includes('--no-code'),
+    json: argv.includes('--json'),
   });
 }

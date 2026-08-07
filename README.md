@@ -110,9 +110,39 @@ npx what-it-does ../my-app         # read somewhere else
 npx what-it-does --no-open         # write the report, don't open it
 npx what-it-does --no-code         # omit source excerpts
 npx what-it-does --no-report       # terminal output only
+npx what-it-does --json            # the snapshot as JSON, nothing else
 ```
 
 Writes `what-it-does-report.html` to the current directory.
+
+### Comparing two scans
+
+`--json` prints a snapshot and nothing else, so two of them can be compared —
+including across branches, which is the useful case:
+
+```bash
+git switch main       && npx what-it-does --json > /tmp/before.json
+git switch my-branch  && npx what-it-does --json > /tmp/after.json
+npx what-it-does diff /tmp/before.json /tmp/after.json
+```
+
+The comparison is in behaviour language, not file language. Git already told you
+`utils/auth.ts` changed; this tells you the endpoint that used to check who was
+asking has stopped.
+
+```bash
+npx what-it-does diff a.json b.json --markdown        # as a PR comment
+npx what-it-does diff a.json b.json --json            # as data
+npx what-it-does diff a.json b.json --fail-on-new     # exit 1 on a new finding
+```
+
+`--fail-on-new` exits `1` only when the comparison surfaces a finding that was
+not there before. A finding that merely moved down the file is not new — code
+shifts constantly, and a check that cries wolf on unrelated edits is a check
+people turn off.
+
+Neither side of a `diff` ever sees the other's source. Both are JSON, which is
+why this works in CI without anything leaving the runner.
 
 ### Sharing a report
 
