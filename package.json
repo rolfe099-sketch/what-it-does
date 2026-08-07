@@ -1,9 +1,17 @@
 {
   "name": "what-it-does",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shows you what software you didn't write actually does, and tells you when that changes. Runs locally; your code never leaves the machine.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rolfe099-sketch/forfun.git"
+  },
+  "homepage": "https://github.com/rolfe099-sketch/forfun#readme",
+  "bugs": {
+    "url": "https://github.com/rolfe099-sketch/forfun/issues"
+  },
   "bin": {
     "what-it-does": "dist/cli.js"
   },
