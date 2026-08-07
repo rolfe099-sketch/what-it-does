@@ -57,6 +57,92 @@ export interface DriftResult {
   unchanged: number;
 }
 
+// ---------------------------------------------------------------------------
+// History
+// ---------------------------------------------------------------------------
+
+/**
+ * How many scans to keep.
+ *
+ * Enough to show a shape — a fortnight of daily scans, or a couple of months of
+ * weekly ones — without the file growing without limit. Snapshots of a large
+ * project are not small, and a history file that quietly reaches a hundred
+ * megabytes is a bug nobody notices until it is a problem.
+ */
+export const HISTORY_LIMIT = 20;
+
+export interface History {
+  version: 1;
+  scans: Snapshot[];
+}
+
+export function appendToHistory(history: History | null, current: Snapshot): History {
+  const scans = [...(history?.scans ?? []), current];
+  // Oldest first, so pruning takes from the front and the timeline reads
+  // left-to-right in time order without any further sorting.
+  return { version: 1, scans: scans.slice(-HISTORY_LIMIT) };
+}
+
+/** One position on the timeline: the state then, and what moved to get there. */
+export interface TimelinePoint {
+  scannedAt: string;
+  behaviours: number;
+  effects: number;
+  gaps: number;
+  /** Empty for the first scan — there was nothing to compare it against. */
+  changes: Change[];
+  unchanged: number;
+}
+
+export interface Timeline {
+  points: TimelinePoint[];
+}
+
+/**
+ * Build the timeline from a history.
+ *
+ * Diffs are computed HERE, at build time, and only the results travel into the
+ * report. Embedding twenty raw snapshots of a large project would add megabytes
+ * to a file whose whole appeal is that you can email it.
+ */
+export function buildTimeline(history: History): Timeline {
+  const points: TimelinePoint[] = history.scans.map((scan, index) => {
+    const previous = index > 0 ? history.scans[index - 1] : null;
+
+    // diff() expects live Behaviours for the "current" side; a snapshot carries
+    // everything it actually reads, so a light adapter avoids re-scanning.
+    const asBehaviours = scan.behaviours.map((b) => ({
+      id: b.id,
+      title: b.title,
+      effects: b.effects.map((key) => {
+        const at = key.indexOf('::');
+        return {
+          kind: (at === -1 ? 'reads-data' : key.slice(0, at)) as never,
+          description: at === -1 ? key : key.slice(at + 2),
+          source: { file: '', line: 0 },
+          confidence: 'certain' as const,
+        };
+      }),
+      gaps: Array.from({ length: b.gaps }),
+    }));
+
+    const result = previous
+      ? diff(previous, asBehaviours as never)
+      : { since: scan.scannedAt, changes: [], unchanged: scan.behaviours.length };
+
+    return {
+      scannedAt: scan.scannedAt,
+      behaviours: scan.behaviours.length,
+      effects: scan.behaviours.reduce((n, b) => n + b.effects.length, 0),
+      gaps: scan.behaviours.reduce((n, b) => n + b.gaps, 0),
+      changes: result.changes,
+      unchanged: result.unchanged,
+    };
+  });
+
+  return { points };
+}
+
 /** Turn "deletes-data::Deletes rows from `x`" back into something readable. */
 export function describeEffectKey(key: string): string {
   const index = key.indexOf('::');

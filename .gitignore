@@ -1,17 +1,16 @@
-# Dependencies and build output
-node_modules/
-dist/
 
-# Test subjects — cloned repos, not ours to commit
-fixtures/
 !fixtures/gapdemo/
-fixtures/gapdemo/.eriksen/
-
+# Dependencies and build output
 # OS / editor noise
-Thumbs.db
+# Test subjects — cloned repos, not ours to commit
 .DS_Store
-.vscode/
-.idea/
 .astro/
+.idea/
+.vscode/
+Thumbs.db
+dist/
 eriksen-report.html
+fixtures/
+fixtures/gapdemo/.eriksen/
+node_modules/
 report-*.html

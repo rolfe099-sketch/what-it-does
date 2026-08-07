@@ -14,7 +14,13 @@ import { detectNextJs, findEntryPoints } from './extract/nextjs/entrypoints.js';
 import { buildBehaviours } from './extract/behaviours.js';
 import { DEFAULT_DEPTH } from './extract/trace.js';
 import { renderReport } from './report/render.js';
-import { snapshot, diff, type Snapshot } from './report/drift.js';
+import {
+  snapshot,
+  diff,
+  appendToHistory,
+  buildTimeline,
+  type History,
+} from './report/drift.js';
 import {
   CONSEQUENTIAL_EFFECTS,
   EFFECT_LABELS,
@@ -95,25 +101,25 @@ interface ScanOptions {
  * Inside the scanned project, because the comparison belongs to that project.
  */
 const SNAPSHOT_DIR = '.eriksen';
-const SNAPSHOT_FILE = 'last-scan.json';
+const HISTORY_FILE = 'history.json';
 
-function readSnapshot(root: string): Snapshot | null {
+function readHistory(root: string): History | null {
   try {
-    const raw = fs.readFileSync(path.join(root, SNAPSHOT_DIR, SNAPSHOT_FILE), 'utf8');
+    const raw = fs.readFileSync(path.join(root, SNAPSHOT_DIR, HISTORY_FILE), 'utf8');
     const parsed = JSON.parse(raw);
-    return parsed?.version === 1 ? (parsed as Snapshot) : null;
+    return parsed?.version === 1 && Array.isArray(parsed.scans) ? (parsed as History) : null;
   } catch {
     return null;
   }
 }
 
-function writeSnapshot(root: string, snap: Snapshot) {
+function writeHistory(root: string, history: History) {
   try {
     const dir = path.join(root, SNAPSHOT_DIR);
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, SNAPSHOT_FILE), JSON.stringify(snap, null, 2), 'utf8');
+    fs.writeFileSync(path.join(dir, HISTORY_FILE), JSON.stringify(history), 'utf8');
   } catch {
-    /* A read-only project still gets a report; it just cannot show drift. */
+    /* A read-only project still gets a report; it just cannot remember. */
   }
 }
 
@@ -156,10 +162,15 @@ function scan(target: string, options: ScanOptions) {
   const { behaviours } = buildBehaviours(root, triggers, middleware);
   const elapsed = Date.now() - started;
 
-  // Compare against the previous scan before overwriting it.
-  const previous = readSnapshot(root);
+  // Compare against the last scan, then remember this one.
+  const history = readHistory(root);
+  const previous = history?.scans[history.scans.length - 1] ?? null;
   const drift = previous ? diff(previous, behaviours) : undefined;
-  writeSnapshot(root, snapshot(behaviours));
+
+  const updated = appendToHistory(history, snapshot(behaviours));
+  writeHistory(root, updated);
+  // Two points is the minimum that can show movement.
+  const timeline = updated.scans.length >= 2 ? buildTimeline(updated) : undefined;
 
   if (options.report) {
     const html = renderReport({
@@ -173,6 +184,7 @@ function scan(target: string, options: ScanOptions) {
       scannedAt: new Date(),
       traceDepth: DEFAULT_DEPTH,
       drift,
+      timeline,
       includeCode: options.includeCode,
     });
     const out = path.join(process.cwd(), 'eriksen-report.html');

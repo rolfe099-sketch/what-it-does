@@ -463,6 +463,66 @@ a.wave__item:hover{border-color:var(--accent);color:var(--accent)}
 .wave__more{font-family:var(--font-data);font-size:var(--t-small);color:var(--ink-faint);
   padding-left:var(--s3)}
 
+/* ── timeline: scrubbing through scans ──────────────────────────────────
+   Built on radio inputs and :checked, not JavaScript. Scrubbing therefore
+   works with scripting disabled, arrow keys move between scans for free, and
+   the selected scan survives Back. There is no state to lose because there is
+   no state — the document already holds every position. */
+.tl{margin-top:var(--s6)}
+.tl__inputs{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+
+.tl__chart{position:relative;border:var(--hair) solid var(--rule);
+  border-radius:var(--radius);background:var(--surface);padding:var(--s5) var(--s5) 0}
+.tl__svg{display:block;width:100%;height:auto}
+.tl__line{fill:none;stroke:var(--ink-faint);stroke-width:1.5;
+  stroke-linejoin:round;stroke-linecap:round}
+.tl__area{fill:var(--accent);opacity:.07}
+.tl__gapline{fill:none;stroke:var(--alert);stroke-width:1.5;stroke-dasharray:3 3;
+  stroke-linejoin:round}
+
+/* markers sit on the track under the chart */
+.tl__track{display:flex;align-items:center;gap:2px;padding:var(--s4) 0 var(--s5)}
+.tl__stop{flex:1 1 0;display:block;cursor:pointer;padding-block:var(--s3);
+  position:relative;text-align:center}
+.tl__pin{display:block;width:11px;height:11px;border-radius:50%;margin:0 auto;
+  background:var(--canvas);border:2px solid var(--rule-strong);
+  transition:background var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease),
+             transform var(--t-fast) var(--ease)}
+.tl__stop:hover .tl__pin{border-color:var(--accent)}
+.tl__when{display:block;margin-top:var(--s2);font-family:var(--font-data);
+  font-size:var(--t-micro);color:var(--ink-faint);white-space:nowrap}
+/* a stop that introduced a finding is marked before you ever select it */
+.tl__stop.has-gap .tl__pin{border-color:var(--alert)}
+
+.tl__panels{margin-top:var(--s5)}
+.tl__panel{display:none}
+
+/* Selection. One rule per stop, generated with the markup. */
+.tl__inputs input:focus-visible + .tl__labels .tl__stop{outline:2px solid var(--focus)}
+
+.tl__state{display:grid;grid-template-columns:repeat(auto-fit,minmax(8rem,1fr));
+  gap:var(--hair);background:var(--rule);border:var(--hair) solid var(--rule);
+  border-radius:var(--radius);overflow:hidden}
+.tl__cell{background:var(--canvas);padding:var(--s4)}
+.tl__cell dt{font-family:var(--font-data);font-size:var(--t-micro);
+  letter-spacing:var(--track-wide);text-transform:uppercase;color:var(--ink-faint)}
+.tl__cell dd{margin:0;margin-top:var(--s1);font-family:var(--font-data);
+  font-size:var(--t-h2);font-weight:500;font-variant-numeric:tabular-nums;line-height:1.2}
+.tl__cell--alert dd{color:var(--alert)}
+.tl__delta{font-family:var(--font-data);font-size:var(--t-small);margin-left:var(--s2);
+  font-weight:400}
+.tl__delta--up{color:var(--accent)}
+.tl__delta--down{color:var(--alert)}
+
+.tl__when-big{font-family:var(--font-display);font-size:var(--t-h2);font-weight:500;
+  letter-spacing:var(--track-tight);margin-bottom:var(--s4)}
+
+@media (max-width:48rem){
+  .tl__when{font-size:9px;transform:rotate(-45deg);transform-origin:center;
+    margin-top:var(--s3)}
+  .tl__track{padding-bottom:var(--s7)}
+}
+
 /* ── drift ──────────────────────────────────────────────────────────── */
 .drift{margin-top:var(--s6);display:flex;flex-direction:column;gap:var(--s4);
   max-width:var(--col-main)}

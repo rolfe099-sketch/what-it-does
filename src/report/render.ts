@@ -50,7 +50,7 @@ import {
 import { simulate } from '../extract/simulate.js';
 import { constellation } from './constellation.js';
 import { starChart } from './starchart.js';
-import type { DriftResult } from './drift.js';
+import type { DriftResult, Timeline } from './drift.js';
 
 export interface ReportData {
   projectName: string;
@@ -64,6 +64,8 @@ export interface ReportData {
   traceDepth: number;
   /** Present only when a previous scan exists to compare against. */
   drift?: DriftResult;
+  /** Present once at least two scans have been recorded. */
+  timeline?: Timeline;
   /** Embed source snippets in walkthroughs. Off via --no-code. */
   includeCode: boolean;
 }
@@ -758,6 +760,192 @@ function starView(graph: ResourceNode[]): string {
   </section>`;
 }
 
+
+/**
+ * The timeline — the system over time, with a playhead you can move.
+ *
+ * Selection is radio inputs and `:checked`, not script. Scrubbing therefore
+ * works with JavaScript disabled, arrow keys move between scans for free, and
+ * the choice survives the Back button. There is no state to lose because there
+ * is no state: every position is already in the document.
+ *
+ * The per-stop rules are generated alongside the markup so the two cannot drift
+ * apart.
+ */
+function timelineView(timeline: Timeline): string {
+  const points = timeline.points;
+  if (points.length < 2) return '';
+
+  const W = 1000;
+  const H = 170;
+  const PAD_X = 26;
+  const PAD_Y = 18;
+
+  const maxBehaviours = Math.max(1, ...points.map((p) => p.behaviours));
+  const maxGaps = Math.max(1, ...points.map((p) => p.gaps));
+
+  const xAt = (i: number) => PAD_X + (i / (points.length - 1)) * (W - PAD_X * 2);
+  const yBeh = (v: number) => H - PAD_Y - (v / maxBehaviours) * (H - PAD_Y * 2);
+  const yGap = (v: number) => H - PAD_Y - (v / maxGaps) * (H - PAD_Y * 2) * 0.55;
+
+  const behLine = points.map((p, i) => xAt(i).toFixed(1) + ',' + yBeh(p.behaviours).toFixed(1)).join(' ');
+  const area = PAD_X + ',' + (H - PAD_Y) + ' ' + behLine + ' ' + (W - PAD_X).toFixed(1) + ',' + (H - PAD_Y);
+  const anyGaps = points.some((p) => p.gaps > 0);
+  const gapLine = points.map((p, i) => xAt(i).toFixed(1) + ',' + yGap(p.gaps).toFixed(1)).join(' ');
+
+  /**
+   * Label the axis at the resolution the data actually has.
+   *
+   * A fixed format is wrong at both ends. Dates make five scans taken minutes
+   * apart read as five identical labels — which looks broken and hides the
+   * ordering entirely. Times make scans months apart meaningless. So the
+   * resolution follows the span: seconds for a rapid sequence, minutes within a
+   * day or so, dates beyond that.
+   */
+  const spanMs =
+    new Date(points[points.length - 1].scannedAt).getTime() -
+    new Date(points[0].scannedAt).getTime();
+
+  const MINUTE = 60 * 1000;
+  const resolution: 'seconds' | 'minutes' | 'days' =
+    spanMs < 45 * MINUTE ? 'seconds' : spanMs < 36 * 60 * MINUTE ? 'minutes' : 'days';
+
+  const short = (iso: string) =>
+    resolution === 'seconds'
+      ? iso.slice(11, 19) // HH:MM:SS
+      : resolution === 'minutes'
+        ? iso.slice(11, 16) // HH:MM
+        : iso.slice(5, 10).replace('-', '/');
+
+  const full = (iso: string) =>
+    resolution === 'seconds' ? iso.slice(0, 19).replace('T', ' ') : iso.slice(0, 16).replace('T', ' ');
+
+  // One block of rules per stop: light the pin, show the panel, show the playhead.
+  const rules = points
+    .map(
+      (_, i) => `
+#tl-${i}:checked ~ .tl__track [for="tl-${i}"] .tl__pin{background:var(--accent);border-color:var(--accent);transform:scale(1.35)}
+#tl-${i}:checked ~ .tl__track [for="tl-${i}"] .tl__when{color:var(--ink)}
+#tl-${i}:checked ~ .tl__panels #tl-panel-${i}{display:block}
+#tl-${i}:checked ~ .tl__chart .tl__head-${i}{opacity:1}`,
+    )
+    .join('');
+
+  const heads = points
+    .map(
+      (_, i) =>
+        `<g class="tl__head-${i}" style="opacity:0"><line x1="${xAt(i).toFixed(1)}" y1="${PAD_Y - 8}" x2="${xAt(i).toFixed(1)}" y2="${H - PAD_Y}" stroke="var(--accent)" stroke-width="1.5"/><circle cx="${xAt(i).toFixed(1)}" cy="${yBeh(points[i].behaviours).toFixed(1)}" r="4.5" fill="var(--accent)"/></g>`,
+    )
+    .join('');
+
+  const stops = points
+    .map(
+      (p, i) =>
+        `<label class="tl__stop${p.gaps > 0 ? ' has-gap' : ''}" for="tl-${i}" title="${escape(full(p.scannedAt))}">
+        <span class="tl__pin"></span>
+        <span class="tl__when">${escape(short(p.scannedAt))}</span>
+      </label>`,
+    )
+    .join('');
+
+  const delta = (now: number, before: number | null, invert = false) => {
+    if (before === null || now === before) return '';
+    const up = now > before;
+    const good = invert ? !up : up;
+    return `<span class="tl__delta tl__delta--${good ? 'up' : 'down'}">${up ? '+' : ''}${now - before}</span>`;
+  };
+
+  const panels = points
+    .map((p, i) => {
+      const prev = i > 0 ? points[i - 1] : null;
+      const moved = p.changes.length;
+
+      const changeList = p.changes
+        .slice(0, 10)
+        .map(
+          (c) => `<div class="change change--${c.kind}">
+        <p class="change__op">${c.kind === 'added' ? 'New' : c.kind === 'removed' ? 'Gone' : 'Changed'}</p>
+        <p class="change__title">${escape(c.title)}</p>
+        <div class="change__body">
+          ${c.lost.map((l) => `<div class="delta delta--gone"><span class="delta__sign">−</span><span>No longer: ${withCode(l)}</span></div>`).join('')}
+          ${c.gained.map((g) => `<div class="delta delta--new"><span class="delta__sign">+</span><span>Now also: ${withCode(g)}</span></div>`).join('')}
+          ${c.gapDelta > 0 ? `<div class="delta delta--gone"><span class="delta__sign">!</span><span>${c.gapDelta} new ${plural(c.gapDelta, 'thing', 'things')} worth checking</span></div>` : ''}
+        </div>
+      </div>`,
+        )
+        .join('');
+
+      const firstNote = `<div class="caveat"><span class="caveat__label">Where the record starts</span>
+             This is the first scan we have. There is nothing before it to compare against, so
+             nothing is marked as changed — that is an absence of history, not an absence of
+             change.</div>`;
+
+      const stillNote = `<div class="clear" style="margin-top:var(--s5)">
+               <svg class="clear__mark" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                 <path d="M3.5 9.5l3.5 3.5 7.5-8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+               </svg>
+               <div><strong>Nothing moved.</strong> All ${p.unchanged} behaviours did exactly
+               what they did at the scan before.</div>
+             </div>`;
+
+      const movedNote = `<div class="drift" style="margin-top:var(--s5)">${changeList}</div>
+             ${moved > 10 ? `<p class="wave__more">and ${moved - 10} more</p>` : ''}`;
+
+      return `<div class="tl__panel" id="tl-panel-${i}">
+      <p class="tl__when-big">${escape(full(p.scannedAt))}</p>
+      <dl class="tl__state">
+        <div class="tl__cell"><dt>Ways in</dt><dd>${p.behaviours}${delta(p.behaviours, prev ? prev.behaviours : null)}</dd></div>
+        <div class="tl__cell"><dt>Things it does</dt><dd>${p.effects}${delta(p.effects, prev ? prev.effects : null)}</dd></div>
+        <div class="tl__cell${p.gaps > 0 ? ' tl__cell--alert' : ''}"><dt>Worth checking</dt><dd>${p.gaps}${delta(p.gaps, prev ? prev.gaps : null, true)}</dd></div>
+        <div class="tl__cell"><dt>Moved</dt><dd>${moved}</dd></div>
+      </dl>
+      ${i === 0 ? firstNote : moved === 0 ? stillNote : movedNote}
+    </div>`;
+    })
+    .join('');
+
+  const last = points.length - 1;
+
+  return `<section class="view" id="timeline" aria-label="Timeline">
+    <div class="wrap">
+      <a class="back" href="#map">← All behaviours</a>
+
+      <div class="col" style="margin-top:var(--s5)">
+        <p class="eyebrow">${points.length} scans · ${escape(short(points[0].scannedAt))} to ${escape(short(points[last].scannedAt))}</p>
+        <h2 class="h1" style="margin-top:var(--s3)">Your application, over time.</h2>
+        <p class="lead" style="margin-top:var(--s4)">Move along the track to see what the
+        system looked like at each scan, and what moved to get there.</p>
+      </div>
+
+      <style>${rules}</style>
+      <div class="tl">
+        ${points.map((_, i) => `<input class="tl__inputs" type="radio" name="tl" id="tl-${i}"${i === last ? ' checked' : ''}>`).join('')}
+
+        <div class="tl__chart">
+          <svg class="tl__svg" viewBox="0 0 ${W} ${H}" role="img"
+               aria-label="Ways into the application at each scan, oldest on the left.">
+            <polygon class="tl__area" points="${area}" />
+            <polyline class="tl__line" points="${behLine}" />
+            ${anyGaps ? `<polyline class="tl__gapline" points="${gapLine}" />` : ''}
+            ${heads}
+          </svg>
+        </div>
+
+        <div class="tl__track">${stops}</div>
+        <div class="tl__panels">${panels}</div>
+      </div>
+
+      <div class="caveat">
+        <span class="caveat__label">What the line is</span>
+        The solid line is how many ways into the application there were at each scan.
+        ${anyGaps ? 'The dashed line is how many things were worth checking. ' : ''}
+        Only the most recent scans are kept — history is pruned so the file cannot grow
+        without limit.
+      </div>
+    </div>
+  </section>`;
+}
+
 // ---------------------------------------------------------------------------
 // Drift
 // ---------------------------------------------------------------------------
@@ -886,6 +1074,7 @@ export function renderReport(data: ReportData): string {
       <a class="tab" href="#map" aria-current="page">Map</a>
       ${graph.length > 0 ? '<a class="tab" href="#space">Dependencies</a>' : ''}
       ${graph.length > 2 ? '<a class="tab" href="#stars">In depth</a>' : ''}
+      ${data.timeline ? '<a class="tab" href="#timeline">Timeline</a>' : ''}
       ${data.drift ? '<a class="tab" href="#drift">Drift</a>' : ''}
     </nav>
     <span class="meta">${escape(stamp)}</span>
@@ -1045,6 +1234,9 @@ ${spaceView(graph)}
 
 <!-- ══ STAR CHART ═══════════════════════════════════════════════════════ -->
 ${starView(graph)}
+
+<!-- ══ TIMELINE ═════════════════════════════════════════════════════════ -->
+${data.timeline ? timelineView(data.timeline) : ''}
 
 <!-- ══ DRIFT ════════════════════════════════════════════════════════════ -->
 ${data.drift ? driftView(data.drift) : ''}
