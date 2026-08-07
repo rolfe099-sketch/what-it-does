@@ -47,6 +47,7 @@ import {
   resourcesOf,
   type ResourceNode,
 } from '../extract/graph.js';
+import { constellation } from './constellation.js';
 import type { DriftResult } from './drift.js';
 
 export interface ReportData {
@@ -576,6 +577,64 @@ function walkthrough(
   </section>`;
 }
 
+function spaceView(graph: ResourceNode[]): string {
+  const map = constellation(graph, resSlug);
+  if (!map.svg) return '';
+
+  const biggest = graph[0];
+  const destructive = graph.filter((n) => n.deletes > 0).length;
+
+  return `<section class="view" id="space" aria-label="Dependency map">
+    <div class="wrap">
+      <a class="back" href="#map">← All behaviours</a>
+
+      <div class="col" style="margin-top:var(--s5)">
+        <p class="eyebrow">${map.nodeCount} ${plural(map.nodeCount, 'dependency', 'dependencies')} · ${map.edgeCount} ${plural(map.edgeCount, 'connection', 'connections')}</p>
+        <h2 class="h1" style="margin-top:var(--s3)">Everything this application leans on.</h2>
+        <p class="lead" style="margin-top:var(--s4)">Two things are joined when some
+        behaviour reaches both — so a line means they get changed together, whether
+        or not anyone meant them to.</p>
+      </div>
+
+      <div class="cst" id="cst">
+        <div class="cst__stage">
+          ${map.svg}
+          <div class="cst__readout" id="cst-readout" aria-hidden="true"></div>
+        </div>
+        <div class="cst__bar">
+          <span class="cst__key"><span class="cst__swatch cst__swatch--big"></span>something can delete from it</span>
+          <span class="cst__key"><span class="cst__swatch"></span>read or written only</span>
+          <span class="cst__key"><span class="cst__swatch cst__swatch--svc"></span>outside service</span>
+          <span class="cst__key">size = how much reaches it</span>
+          <span class="cst__zoom">
+            <button type="button" data-zoom="out" aria-label="Zoom out">−</button>
+            <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+            <button type="button" data-zoom="reset" aria-label="Reset view">⤺</button>
+          </span>
+        </div>
+      </div>
+
+      <div class="caveat caveat--accent">
+        <span class="caveat__label">How to read it</span>
+        <strong>${escape(biggest.resource.name)}</strong> is the centre of gravity —
+        ${biggest.touches.length} ${plural(biggest.touches.length, 'behaviour reaches', 'behaviours reach')} it.
+        ${destructive > 0
+          ? `${destructive} of these ${plural(destructive, 'is one', 'are ones')} something can delete from.`
+          : 'Nothing here can be deleted from.'}
+        Click any node to see exactly what breaks if you change it.
+      </div>
+
+      <div class="caveat">
+        <span class="caveat__label">What this picture leaves out</span>
+        Only names written literally in the code can be placed. Anything reached
+        through a name chosen at runtime is missing from this map entirely — not
+        drawn faintly, not drawn at all — so treat it as a floor on how connected
+        your application is, never a ceiling.
+      </div>
+    </div>
+  </section>`;
+}
+
 // ---------------------------------------------------------------------------
 // Drift
 // ---------------------------------------------------------------------------
@@ -702,6 +761,7 @@ export function renderReport(data: ReportData): string {
     <span class="top__spacer"></span>
     <nav class="tabs" aria-label="Views">
       <a class="tab" href="#map" aria-current="page">Map</a>
+      ${graph.length > 0 ? '<a class="tab" href="#space">Dependencies</a>' : ''}
       ${data.drift ? '<a class="tab" href="#drift">Drift</a>' : ''}
     </nav>
     <span class="meta">${escape(stamp)}</span>
@@ -788,6 +848,7 @@ export function renderReport(data: ReportData): string {
             </div>
             <p class="lead" style="margin-top:var(--s4)">Every table and outside service
             this application touches, and how much of it would notice if one changed.</p>
+            <p style="margin-top:var(--s4)"><a href="#space">See them as a map →</a></p>
             ${resourceList(graph, topResources)}
             <div class="caveat">
               <span class="caveat__label">This is the question behind "I'm afraid to touch it"</span>
@@ -854,6 +915,9 @@ ${ranked
 <!-- ══ IMPACT ═══════════════════════════════════════════════════════════ -->
 ${topResources.map((node) => impactView(node, linkable)).join('')}
 
+<!-- ══ CONSTELLATION ════════════════════════════════════════════════════ -->
+${spaceView(graph)}
+
 <!-- ══ DRIFT ════════════════════════════════════════════════════════════ -->
 ${data.drift ? driftView(data.drift) : ''}
 
@@ -901,6 +965,93 @@ ${data.drift ? driftView(data.drift) : ''}
     }
   }
   addEventListener('hashchange',sync);sync();
+
+  /* ── constellation: isolation + pan/zoom ──────────────────────────────
+     Progressive enhancement only. Without this the map still draws, every
+     node is still a keyboard-reachable link to its impact view, and CSS
+     alone still dims the others on hover. */
+  var cst=document.getElementById('cst');
+  if(!cst) return;
+  var svg=cst.querySelector('.cst__svg');
+  var readout=document.getElementById('cst-readout');
+  var nodes=[].slice.call(cst.querySelectorAll('.cst__node'));
+  var edges=[].slice.call(cst.querySelectorAll('.cst__edge'));
+  var byKey={}; nodes.forEach(function(n){byKey[n.dataset.key]=n;});
+
+  function light(node){
+    var key=node.dataset.key;
+    var near=(node.dataset.near||'').split(' ').filter(Boolean);
+    cst.classList.add('is-isolating');
+    node.classList.add('is-lit');
+    near.forEach(function(k){ if(byKey[k]) byKey[k].classList.add('is-lit'); });
+    edges.forEach(function(e){
+      if(e.dataset.a===key||e.dataset.b===key) e.classList.add('is-lit');
+    });
+    if(readout){
+      readout.innerHTML='<b></b><span></span>';
+      readout.querySelector('b').textContent=node.dataset.name||'';
+      readout.querySelector('span').textContent=node.dataset.note||'';
+      readout.classList.add('is-on');
+    }
+  }
+  function clear(){
+    cst.classList.remove('is-isolating');
+    nodes.forEach(function(n){n.classList.remove('is-lit');});
+    edges.forEach(function(e){e.classList.remove('is-lit');});
+    if(readout) readout.classList.remove('is-on');
+  }
+  nodes.forEach(function(n){
+    n.addEventListener('mouseenter',function(){light(n);});
+    n.addEventListener('focus',function(){light(n);});
+    n.addEventListener('mouseleave',clear);
+    n.addEventListener('blur',clear);
+  });
+
+  /* pan + zoom by moving the viewBox, so it stays crisp at any scale */
+  var base=svg.getAttribute('viewBox').split(' ').map(Number);
+  var view=base.slice();
+  function apply(){ svg.setAttribute('viewBox',view.join(' ')); }
+  function zoom(factor,cx,cy){
+    var nw=Math.min(base[2]*3,Math.max(base[2]*0.15,view[2]*factor));
+    var nh=nw*(base[3]/base[2]);
+    view[0]=cx-(cx-view[0])*(nw/view[2]);
+    view[1]=cy-(cy-view[1])*(nh/view[3]);
+    view[2]=nw; view[3]=nh; apply();
+  }
+  function toSvg(ev){
+    var r=svg.getBoundingClientRect();
+    return [view[0]+((ev.clientX-r.left)/r.width)*view[2],
+            view[1]+((ev.clientY-r.top)/r.height)*view[3]];
+  }
+  svg.addEventListener('wheel',function(ev){
+    ev.preventDefault(); var p=toSvg(ev);
+    zoom(ev.deltaY>0?1.12:0.89,p[0],p[1]);
+  },{passive:false});
+
+  var dragging=false,last=null;
+  svg.addEventListener('pointerdown',function(ev){
+    if(ev.target.closest('.cst__node')) return;   /* let clicks through to links */
+    dragging=true; last=[ev.clientX,ev.clientY];
+    svg.classList.add('is-panning'); svg.setPointerCapture(ev.pointerId);
+  });
+  svg.addEventListener('pointermove',function(ev){
+    if(!dragging) return;
+    var r=svg.getBoundingClientRect();
+    view[0]-=((ev.clientX-last[0])/r.width)*view[2];
+    view[1]-=((ev.clientY-last[1])/r.height)*view[3];
+    last=[ev.clientX,ev.clientY]; apply();
+  });
+  function endPan(){ dragging=false; svg.classList.remove('is-panning'); }
+  svg.addEventListener('pointerup',endPan);
+  svg.addEventListener('pointercancel',endPan);
+
+  cst.querySelectorAll('[data-zoom]').forEach(function(b){
+    b.addEventListener('click',function(){
+      var mode=b.dataset.zoom;
+      if(mode==='reset'){ view=base.slice(); apply(); return; }
+      zoom(mode==='in'?0.8:1.25,view[0]+view[2]/2,view[1]+view[3]/2);
+    });
+  });
 })();
 </script>
 </body>

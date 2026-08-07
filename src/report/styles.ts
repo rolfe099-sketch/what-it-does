@@ -320,6 +320,75 @@ body:has(.view:target) #map{display:none}
   font-size:var(--t-meta);color:var(--ink-muted)}
 .touch__how span{display:flex;gap:var(--s3);align-items:flex-start}
 
+/* ── the constellation ──────────────────────────────────────────────────
+   Every visual property carries meaning: area is blast radius, a hollow ring
+   is a service you do not control, accent means something can delete from it,
+   edge opacity is how many behaviours use both ends. Nothing is decorative —
+   a picture where size is arbitrary teaches the eye to ignore size. */
+.cst{margin-top:var(--s6);border:var(--hair) solid var(--rule);border-radius:var(--radius);
+  background:var(--surface);overflow:hidden;position:relative}
+.cst__stage{position:relative;background:
+  radial-gradient(circle at 50% 45%, var(--sunk) 0%, var(--surface) 70%)}
+.cst__svg{display:block;width:100%;height:auto;max-height:76vh;touch-action:none;cursor:grab}
+.cst__svg.is-panning{cursor:grabbing}
+
+.cst__edge{stroke:var(--rule-strong);transition:opacity var(--t-fast) var(--ease),
+  stroke var(--t-fast) var(--ease)}
+.cst__dot{fill:var(--ink-faint);transition:fill var(--t-fast) var(--ease),
+  r var(--t-base) var(--ease)}
+.cst__hit{fill:transparent}
+.cst__node{cursor:pointer;outline:none}
+.cst__node.is-destructive .cst__dot{fill:var(--accent)}
+/* Hollow = someone else's service. You cannot change its shape, only stop
+   calling it, and that is a different kind of dependency. */
+.cst__node.is-service .cst__dot{fill:var(--canvas);stroke:var(--ink-faint);stroke-width:2}
+.cst__node.is-service.is-destructive .cst__dot{stroke:var(--accent)}
+.cst__label{fill:var(--ink-muted);font-family:var(--font-data);font-size:13px;
+  pointer-events:none;transition:fill var(--t-fast) var(--ease)}
+
+/* Isolation on hover. CSS-only so it works with scripting disabled; the script
+   adds neighbour highlighting on top. */
+.cst__nodes:hover .cst__node:not(:hover){opacity:.22}
+.cst__node:hover .cst__dot{fill:var(--accent)}
+.cst__node:hover .cst__label{fill:var(--ink)}
+.cst__node:focus-visible .cst__dot{stroke:var(--focus);stroke-width:3}
+
+/* Script-driven states. */
+.cst.is-isolating .cst__node:not(.is-lit){opacity:.14}
+.cst.is-isolating .cst__edge:not(.is-lit){opacity:.05 !important}
+.cst.is-isolating .cst__edge.is-lit{stroke:var(--accent);opacity:.9 !important}
+.cst__node.is-lit .cst__label{fill:var(--ink)}
+
+.cst__bar{display:flex;align-items:center;gap:var(--s4);flex-wrap:wrap;
+  padding:var(--s3) var(--s4);border-top:var(--hair) solid var(--rule);
+  background:var(--canvas);font-family:var(--font-data);font-size:var(--t-small);
+  color:var(--ink-muted)}
+.cst__key{display:flex;align-items:center;gap:var(--s2)}
+.cst__swatch{width:11px;height:11px;border-radius:50%;background:var(--ink-faint);flex:none}
+.cst__swatch--big{background:var(--accent)}
+.cst__swatch--svc{background:var(--canvas);border:2px solid var(--ink-faint)}
+.cst__zoom{margin-left:auto;display:flex;gap:var(--s2)}
+.cst__zoom button{font-family:var(--font-data);font-size:var(--t-small);
+  width:1.9rem;height:1.9rem;display:grid;place-items:center;
+  background:var(--surface);color:var(--ink-muted);cursor:pointer;
+  border:var(--hair) solid var(--rule-strong);border-radius:var(--radius)}
+.cst__zoom button:hover{color:var(--accent);border-color:var(--accent)}
+
+.cst__readout{position:absolute;left:var(--s4);top:var(--s4);pointer-events:none;
+  background:var(--surface);border:var(--hair) solid var(--rule-strong);
+  border-radius:var(--radius);padding:var(--s3) var(--s4);max-width:22rem;
+  opacity:0;transition:opacity var(--t-fast) var(--ease);box-shadow:var(--shadow)}
+.cst__readout.is-on{opacity:1}
+.cst__readout b{font-family:var(--font-data);font-size:var(--t-body);color:var(--ink);
+  display:block}
+.cst__readout span{font-size:var(--t-small);color:var(--ink-muted)}
+
+@media (max-width:48rem){
+  .cst__svg{max-height:60vh}
+  .cst__label{font-size:16px}
+  .cst__readout{display:none}
+}
+
 /* ── drift ──────────────────────────────────────────────────────────── */
 .drift{margin-top:var(--s6);display:flex;flex-direction:column;gap:var(--s4);
   max-width:var(--col-main)}
