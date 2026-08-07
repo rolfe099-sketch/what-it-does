@@ -48,6 +48,7 @@ import {
   type ResourceNode,
 } from '../extract/graph.js';
 import { constellation } from './constellation.js';
+import { starChart } from './starchart.js';
 import type { DriftResult } from './drift.js';
 
 export interface ReportData {
@@ -635,6 +636,59 @@ function spaceView(graph: ResourceNode[]): string {
   </section>`;
 }
 
+function starView(graph: ResourceNode[]): string {
+  const chart = starChart(graph, resSlug);
+  if (!chart.svg) return '';
+
+  return `<section class="view" id="stars" aria-label="Dependency map in depth">
+    <div class="wrap">
+      <a class="back" href="#map">← All behaviours</a>
+
+      <div class="col" style="margin-top:var(--s5)">
+        <p class="eyebrow">${chart.nodeCount} ${plural(chart.nodeCount, 'dependency', 'dependencies')} · in depth</p>
+        <h2 class="h1" style="margin-top:var(--s3)">The same map, with room to breathe.</h2>
+        <p class="lead" style="margin-top:var(--s4)">Drag to turn it. Nearer means larger
+        and brighter; the clusters are groups of tables your application almost always
+        touches together.</p>
+        <p style="margin-top:var(--s4)"><a href="#space">See it flat instead →</a></p>
+      </div>
+
+      <div class="sc" id="sc">
+        <div class="sc__stage">
+          ${chart.svg}
+          <div class="cst__readout" id="sc-readout" aria-hidden="true"></div>
+          <span class="sc__hint">Drag to turn</span>
+        </div>
+        <div class="cst__bar">
+          <span class="cst__key"><span class="cst__swatch cst__swatch--big"></span>something can delete from it</span>
+          <span class="cst__key"><span class="cst__swatch"></span>read or written only</span>
+          <span class="cst__key"><span class="cst__swatch cst__swatch--svc"></span>outside service</span>
+          <span class="cst__zoom">
+            <button type="button" data-turn="drift" aria-label="Start or stop the slow turn">◐</button>
+            <button type="button" data-turn="reset" aria-label="Reset the angle">⤺</button>
+          </span>
+        </div>
+      </div>
+
+      <div class="caveat">
+        <span class="caveat__label">Why depth rather than decoration</span>
+        Forced onto one plane, a densely-connected graph presses unrelated clusters
+        into each other simply because there is nowhere else for them to go. A third
+        axis gives them somewhere, so what you are looking at is closer to the shape
+        of the data. Everything here is the same information as the flat map and the
+        text list — <strong>no claim is made in this view that is not made in those.</strong>
+      </div>
+
+      <div class="caveat">
+        <span class="caveat__label">What this picture leaves out</span>
+        Only names written literally in the code can be placed. Anything reached
+        through a name chosen at runtime is absent entirely, so treat this as a floor
+        on how connected your application is, never a ceiling.
+      </div>
+    </div>
+  </section>`;
+}
+
 // ---------------------------------------------------------------------------
 // Drift
 // ---------------------------------------------------------------------------
@@ -762,6 +816,7 @@ export function renderReport(data: ReportData): string {
     <nav class="tabs" aria-label="Views">
       <a class="tab" href="#map" aria-current="page">Map</a>
       ${graph.length > 0 ? '<a class="tab" href="#space">Dependencies</a>' : ''}
+      ${graph.length > 2 ? '<a class="tab" href="#stars">In depth</a>' : ''}
       ${data.drift ? '<a class="tab" href="#drift">Drift</a>' : ''}
     </nav>
     <span class="meta">${escape(stamp)}</span>
@@ -848,7 +903,8 @@ export function renderReport(data: ReportData): string {
             </div>
             <p class="lead" style="margin-top:var(--s4)">Every table and outside service
             this application touches, and how much of it would notice if one changed.</p>
-            <p style="margin-top:var(--s4)"><a href="#space">See them as a map →</a></p>
+            <p style="margin-top:var(--s4)"><a href="#space">See them as a map →</a>
+            ${graph.length > 2 ? ' &nbsp;·&nbsp; <a href="#stars">or in depth →</a>' : ''}</p>
             ${resourceList(graph, topResources)}
             <div class="caveat">
               <span class="caveat__label">This is the question behind "I'm afraid to touch it"</span>
@@ -917,6 +973,9 @@ ${topResources.map((node) => impactView(node, linkable)).join('')}
 
 <!-- ══ CONSTELLATION ════════════════════════════════════════════════════ -->
 ${spaceView(graph)}
+
+<!-- ══ STAR CHART ═══════════════════════════════════════════════════════ -->
+${starView(graph)}
 
 <!-- ══ DRIFT ════════════════════════════════════════════════════════════ -->
 ${data.drift ? driftView(data.drift) : ''}
@@ -1051,6 +1110,137 @@ ${data.drift ? driftView(data.drift) : ''}
       if(mode==='reset'){ view=base.slice(); apply(); return; }
       zoom(mode==='in'?0.8:1.25,view[0]+view[2]/2,view[1]+view[3]/2);
     });
+  });
+
+  /* ── star chart: rotation ─────────────────────────────────────────────
+     The projection below is the same maths as project() in layout.ts, which
+     produced the static SVG. It is written twice because this script cannot
+     import from the build. A mismatch is self-detecting: the nodes would jump
+     the instant you started dragging. */
+  var sc=document.getElementById('sc');
+  if(!sc) return;
+  var scSvg=sc.querySelector('.sc__svg');
+  var scRead=document.getElementById('sc-readout');
+  var scNodes=[].slice.call(sc.querySelectorAll('.sc__node'));
+  var scEdges=[].slice.call(sc.querySelectorAll('.sc__edge'));
+  var nodeGroup=sc.querySelector('.sc__nodes');
+
+  var dist=parseFloat(scSvg.dataset.distance);
+  var yaw0=parseFloat(scSvg.dataset.yaw), pitch0=parseFloat(scSvg.dataset.pitch);
+  var fit=parseFloat(scSvg.dataset.fit)||1;
+  var yaw=yaw0, pitch=pitch0, CENTRE=500;
+
+  var pts=scNodes.map(function(n){
+    return { el:n, key:n.dataset.key,
+      x:parseFloat(n.dataset.x), y:parseFloat(n.dataset.y), z:parseFloat(n.dataset.z),
+      r:parseFloat(n.dataset.r),
+      hit:n.querySelector('.sc__hit'), dot:n.querySelector('.sc__dot'),
+      label:n.querySelector('.sc__label') };
+  });
+  var scByKey={}; pts.forEach(function(p){scByKey[p.key]=p;});
+
+  function project(p){
+    var cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);
+    var x1=p.x*cy - p.z*sy;
+    var z1=p.x*sy + p.z*cy;
+    var y1=p.y*cp - z1*sp;
+    var z2=p.y*sp + z1*cp;
+    var scale=dist/(dist+z2);
+    return { x:CENTRE + x1*scale*fit, y:CENTRE + y1*scale*fit, scale:scale, depth:z2 };
+  }
+
+  function draw(){
+    pts.forEach(function(p){
+      var q=project(p); p.proj=q;
+      var r=p.r*q.scale*fit;
+      var op=Math.max(0.32,Math.min(1,q.scale*0.95));
+      p.dot.setAttribute('cx',q.x.toFixed(1)); p.dot.setAttribute('cy',q.y.toFixed(1));
+      p.dot.setAttribute('r',r.toFixed(1)); p.dot.setAttribute('opacity',op.toFixed(2));
+      p.hit.setAttribute('cx',q.x.toFixed(1)); p.hit.setAttribute('cy',q.y.toFixed(1));
+      p.hit.setAttribute('r',Math.max(r+6,13).toFixed(1));
+      if(p.label){
+        p.label.setAttribute('x',q.x.toFixed(1));
+        p.label.setAttribute('y',(q.y+r+13).toFixed(1));
+        p.label.setAttribute('opacity',op.toFixed(2));
+      }
+    });
+    scEdges.forEach(function(e){
+      var a=scByKey[e.dataset.a],b=scByKey[e.dataset.b];
+      if(!a||!b) return;
+      e.setAttribute('x1',a.proj.x.toFixed(1)); e.setAttribute('y1',a.proj.y.toFixed(1));
+      e.setAttribute('x2',b.proj.x.toFixed(1)); e.setAttribute('y2',b.proj.y.toFixed(1));
+    });
+    /* painter's algorithm — farthest first so near nodes overlap far ones */
+    pts.slice().sort(function(a,b){return b.proj.depth-a.proj.depth;})
+       .forEach(function(p){ nodeGroup.appendChild(p.el); });
+  }
+
+  var queued=false;
+  function schedule(){ if(queued) return; queued=true;
+    requestAnimationFrame(function(){ queued=false; draw(); }); }
+
+  var turning=false, from=null;
+  scSvg.addEventListener('pointerdown',function(ev){
+    if(ev.target.closest('.sc__node')) return;
+    turning=true; from=[ev.clientX,ev.clientY]; drift=false;
+    sc.classList.add('is-touched');
+    scSvg.classList.add('is-turning'); scSvg.setPointerCapture(ev.pointerId);
+  });
+  scSvg.addEventListener('pointermove',function(ev){
+    if(!turning) return;
+    yaw += (ev.clientX-from[0])*0.008;
+    pitch = Math.max(-1.2,Math.min(1.2, pitch + (ev.clientY-from[1])*0.006));
+    from=[ev.clientX,ev.clientY]; schedule();
+  });
+  function endTurn(){ turning=false; scSvg.classList.remove('is-turning'); }
+  scSvg.addEventListener('pointerup',endTurn);
+  scSvg.addEventListener('pointercancel',endTurn);
+
+  /* A slow drift, because a star chart that never moves looks like a picture of
+     one. Off entirely when the visitor has asked for reduced motion — this is
+     ornament, and ornament is the first thing that should go. */
+  var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var drift = !reduced;
+  (function loop(){
+    if(drift && !turning && !sc.matches(':hover')){ yaw += 0.0016; schedule(); }
+    requestAnimationFrame(loop);
+  })();
+
+  sc.querySelectorAll('[data-turn]').forEach(function(b){
+    b.addEventListener('click',function(){
+      if(b.dataset.turn==='reset'){ yaw=yaw0; pitch=pitch0; schedule(); return; }
+      drift=!drift; sc.classList.add('is-touched');
+    });
+  });
+
+  function scLight(node){
+    var key=node.dataset.key;
+    sc.classList.add('is-isolating'); node.classList.add('is-lit');
+    scEdges.forEach(function(e){
+      if(e.dataset.a===key||e.dataset.b===key){
+        e.classList.add('is-lit');
+        var other=e.dataset.a===key?e.dataset.b:e.dataset.a;
+        if(scByKey[other]) scByKey[other].el.classList.add('is-lit');
+      }
+    });
+    if(scRead){
+      scRead.innerHTML='<b></b><span></span>';
+      scRead.querySelector('b').textContent=node.dataset.name||'';
+      scRead.querySelector('span').textContent=node.dataset.note||'';
+      scRead.classList.add('is-on');
+    }
+  }
+  function scClear(){
+    sc.classList.remove('is-isolating');
+    scNodes.forEach(function(n){n.classList.remove('is-lit');});
+    scEdges.forEach(function(e){e.classList.remove('is-lit');});
+    if(scRead) scRead.classList.remove('is-on');
+  }
+  scNodes.forEach(function(n){
+    n.addEventListener('mouseenter',function(){scLight(n);});
+    n.addEventListener('focus',function(){scLight(n);});
+    n.addEventListener('mouseleave',scClear);
+    n.addEventListener('blur',scClear);
   });
 })();
 </script>

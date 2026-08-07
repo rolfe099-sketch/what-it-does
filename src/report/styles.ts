@@ -389,6 +389,40 @@ body:has(.view:target) #map{display:none}
   .cst__readout{display:none}
 }
 
+/* ── the star chart: same graph, three dimensions ───────────────────────
+   Depth is earned, not decorative — a dense graph forced onto one plane pushes
+   unrelated clusters into each other for want of anywhere else to go. All the
+   depth cues derive from one perspective scale: size, opacity, and paint order. */
+.sc{margin-top:var(--s6);border:var(--hair) solid var(--rule);border-radius:var(--radius);
+  background:var(--surface);overflow:hidden;position:relative}
+.sc__stage{position:relative;background:
+  radial-gradient(ellipse at 50% 42%, var(--sunk) 0%, var(--surface) 72%)}
+.sc__svg{display:block;width:100%;height:auto;max-height:78vh;touch-action:none;cursor:grab}
+.sc__svg.is-turning{cursor:grabbing}
+
+.sc__edge{stroke:var(--rule-strong)}
+.sc__dot{fill:var(--ink-faint)}
+.sc__hit{fill:transparent}
+.sc__node{cursor:pointer;outline:none}
+.sc__node.is-destructive .sc__dot{fill:var(--accent)}
+.sc__node.is-service .sc__dot{fill:var(--canvas);stroke:var(--ink-faint);stroke-width:2}
+.sc__node.is-service.is-destructive .sc__dot{stroke:var(--accent)}
+.sc__label{fill:var(--ink-muted);font-family:var(--font-data);font-size:12.5px;
+  pointer-events:none}
+.sc__node:hover .sc__dot,.sc__node:focus-visible .sc__dot{fill:var(--accent);opacity:1 !important}
+.sc__node:hover .sc__label{fill:var(--ink);opacity:1 !important}
+.sc__node:focus-visible .sc__dot{stroke:var(--focus);stroke-width:3}
+
+.sc.is-isolating .sc__node:not(.is-lit){opacity:.12}
+.sc.is-isolating .sc__edge:not(.is-lit){opacity:.04 !important}
+.sc.is-isolating .sc__edge.is-lit{stroke:var(--accent);opacity:.85 !important}
+.sc__node.is-lit .sc__label{fill:var(--ink);opacity:1 !important}
+
+.sc__hint{position:absolute;right:var(--s4);bottom:var(--s4);font-family:var(--font-data);
+  font-size:var(--t-micro);letter-spacing:var(--track-wide);text-transform:uppercase;
+  color:var(--ink-faint);pointer-events:none;transition:opacity var(--t-base) var(--ease)}
+.sc.is-touched .sc__hint{opacity:0}
+
 /* ── drift ──────────────────────────────────────────────────────────── */
 .drift{margin-top:var(--s6);display:flex;flex-direction:column;gap:var(--s4);
   max-width:var(--col-main)}
