@@ -55,7 +55,7 @@ code{font-family:var(--font-data);font-size:.9em;
 .h1{font-family:var(--font-display);font-size:var(--t-h1);font-weight:500;
   line-height:var(--lh-tight);letter-spacing:var(--track-tight);text-wrap:balance}
 .h2{font-family:var(--font-display);font-size:var(--t-h2);font-weight:500;
-  line-height:var(--lh-snug);letter-spacing:var(--track-tight)}
+  line-height:var(--lh-snug);letter-spacing:var(--track-tight);text-wrap:balance}
 .h3{font-family:var(--font-display);font-size:var(--t-h3);font-weight:500;
   line-height:var(--lh-snug)}
 .lead{font-size:var(--t-lead);color:var(--ink-muted);max-width:var(--measure-tight);
@@ -94,6 +94,15 @@ main{padding-block:var(--s8) var(--s10)}
    The big number is the artwork. Mono, tabular, with a scale rule beneath
    it so it reads as an instrument value rather than marketing typography. */
 .readout{margin-top:var(--s6);display:flex;flex-direction:column;gap:var(--s3)}
+/* At width the caption sits beside the number, hung from its baseline, and
+   the tick scale underlines both — one instrument, not a stack of parts. */
+@media (min-width:48rem){
+  .readout{display:grid;grid-template-columns:auto 1fr;align-items:end;
+    column-gap:var(--s6);grid-template-areas:"value caption" "scale scale"}
+  .readout__value{grid-area:value}
+  .readout__caption{grid-area:caption;padding-bottom:var(--s2)}
+  .readout__scale{grid-area:scale}
+}
 .readout__value{font-family:var(--font-data);font-size:var(--t-readout);font-weight:500;
   line-height:.9;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--ink)}
 .readout__scale{display:flex;align-items:flex-end;gap:4px;height:12px}
@@ -101,15 +110,22 @@ main{padding-block:var(--s8) var(--s10)}
 .readout__scale i:nth-child(5n+1){height:11px;background:var(--accent)}
 .readout__caption{font-size:var(--t-meta);color:var(--ink-muted);max-width:40ch}
 
-/* ── stat strip ─────────────────────────────────────────────────────── */
+/* ── stat strip ───────────────────────────────────────────────────────
+   Gauge cards. Each cell carries a hairline gauge edge along its top; the
+   edge takes the signal colour when the value does, so the strip reads at a
+   glance like a row of instruments — and the colour is never alone, because
+   the value beneath it is the same colour and the label says what it is. */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));
   gap:var(--hair);background:var(--rule);border:var(--hair) solid var(--rule);
   border-radius:var(--radius);overflow:hidden;margin-top:var(--s6)}
-.stat{background:var(--canvas);padding:var(--s4)}
+.stat{background:var(--surface);padding:var(--s4);
+  border-top:2px solid var(--rule-strong)}
 .stat__label{font-family:var(--font-data);font-size:var(--t-micro);
   letter-spacing:var(--track-wide);text-transform:uppercase;color:var(--ink-faint)}
 .stat__value{font-family:var(--font-data);font-size:var(--t-h2);font-weight:500;
   font-variant-numeric:tabular-nums;line-height:1.2;margin-top:var(--s1)}
+.stat--alert{border-top-color:var(--alert)}
+.stat--ok{border-top-color:var(--ok)}
 .stat--alert .stat__value{color:var(--alert)}
 .stat--ok .stat__value{color:var(--ok)}
 
@@ -172,11 +188,13 @@ main{padding-block:var(--s8) var(--s10)}
 .badge--likely{border-color:var(--alert);color:var(--alert);background:var(--alert-wash)}
 .badge--possible{border-color:var(--rule-strong)}
 
-.clear{display:flex;gap:var(--s4);align-items:flex-start;background:var(--surface);
+.clear{display:flex;gap:var(--s5);align-items:center;background:var(--surface);
   border:var(--hair) solid var(--rule);border-left:3px solid var(--ok);
-  border-radius:0 var(--radius) var(--radius) 0;padding:var(--s5);
-  max-width:var(--col-main);margin-top:var(--s5)}
-.clear__mark{color:var(--ok);flex:none;margin-top:.15em}
+  border-radius:0 var(--radius) var(--radius) 0;padding:var(--s6) var(--s5);
+  max-width:var(--col-main);margin-top:var(--s5);font-size:var(--t-lead);
+  line-height:var(--lh-snug)}
+.clear__mark{color:var(--ok);flex:none;width:3rem;height:3rem;border-radius:50%;
+  background:var(--ok-wash);display:grid;place-items:center}
 .clear strong{font-weight:600}
 
 /* ── behaviour groups ────────────────────────────────────────────────
@@ -186,6 +204,15 @@ main{padding-block:var(--s8) var(--s10)}
 .group>summary{display:flex;align-items:center;gap:var(--s4);cursor:pointer;
   padding-block:var(--s4);list-style:none}
 .group>summary::-webkit-details-marker{display:none}
+.group>summary:hover{background:var(--surface)}
+/* 801 rows is a scroll problem before it is a reading problem. Above the
+   width where two cards fit, the open drawer lays them side by side — the
+   rows are self-contained cards, so nothing about reading order is lost and
+   the page gets half as long. */
+@media (min-width:60rem){
+  .group__body{display:grid;grid-template-columns:1fr 1fr;
+    gap:var(--s1) var(--s4);align-items:start}
+}
 .group__chev{flex:none;color:var(--ink-faint);transition:transform var(--t-fast) var(--ease)}
 .group[open] .group__chev{transform:rotate(90deg)}
 .group__name{font-family:var(--font-data);font-size:var(--t-meta);font-weight:500;
@@ -253,6 +280,14 @@ body:has(.view:target) #map{display:none}
   color:var(--ink-muted);font-variant-numeric:tabular-nums}
 .step--big .step__node{border-color:var(--accent);color:var(--accent);
   box-shadow:0 0 0 3px var(--accent-wash)}
+/* A guard is a decision, and decisions are diamonds — the one piece of
+   flowchart vocabulary everyone already reads. The number counter-rotates so
+   only the frame turns. */
+.step--guard .step__node{border-radius:var(--radius);transform:rotate(45deg)}
+.step--guard .step__node i{font-style:normal;display:block;transform:rotate(-45deg)}
+.step__node i{font-style:normal}
+/* The response is the terminus: the one filled node, where the line ends. */
+.step--end .step__node{background:var(--ink);border-color:var(--ink);color:var(--canvas)}
 .step__label{font-size:var(--t-lead);line-height:var(--lh-snug);color:var(--ink)}
 .step__where{font-family:var(--font-data);font-size:var(--t-small);color:var(--ink-faint);
   margin-top:var(--s2)}
@@ -332,10 +367,19 @@ body:has(.view:target) #map{display:none}
 .cst__svg{display:block;width:100%;height:auto;max-height:76vh;touch-action:none;cursor:grab}
 .cst__svg.is-panning{cursor:grabbing}
 
+/* The graticule is a scale reference, like the rings of a range scope. It
+   pans and zooms with the map because it is part of the map. */
+.cst__grid{stroke:var(--rule);fill:none}
+.cst__grid-mark{stroke:var(--rule-strong)}
 .cst__edge{stroke:var(--rule-strong);transition:opacity var(--t-fast) var(--ease),
   stroke var(--t-fast) var(--ease)}
 .cst__dot{fill:var(--ink-faint);transition:fill var(--t-fast) var(--ease),
   r var(--t-base) var(--ease)}
+/* The halo scales with the node, so reach glows in proportion to itself. */
+.cst__glow{fill:var(--ink-faint);opacity:var(--glow);pointer-events:none;
+  transition:opacity var(--t-fast) var(--ease)}
+.cst__node.is-destructive .cst__glow{fill:var(--accent)}
+.cst__node:hover .cst__glow{opacity:.3}
 .cst__hit{fill:transparent}
 .cst__node{cursor:pointer;outline:none}
 .cst__node.is-destructive .cst__dot{fill:var(--accent)}
@@ -343,8 +387,11 @@ body:has(.view:target) #map{display:none}
    calling it, and that is a different kind of dependency. */
 .cst__node.is-service .cst__dot{fill:var(--canvas);stroke:var(--ink-faint);stroke-width:2}
 .cst__node.is-service.is-destructive .cst__dot{stroke:var(--accent)}
+/* paint-order draws the stroke behind the glyphs: a halo, so a label stays
+   readable where it crosses an edge instead of dissolving into it. */
 .cst__label{fill:var(--ink-muted);font-family:var(--font-data);font-size:13px;
-  pointer-events:none;transition:fill var(--t-fast) var(--ease)}
+  pointer-events:none;transition:fill var(--t-fast) var(--ease);
+  paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round}
 
 /* Isolation on hover. CSS-only so it works with scripting disabled; the script
    adds neighbour highlighting on top. */
@@ -355,6 +402,7 @@ body:has(.view:target) #map{display:none}
 
 /* Script-driven states. */
 .cst.is-isolating .cst__node:not(.is-lit){opacity:.14}
+.cst.is-isolating .cst__grid{opacity:.4}
 .cst.is-isolating .cst__edge:not(.is-lit){opacity:.05 !important}
 .cst.is-isolating .cst__edge.is-lit{stroke:var(--accent);opacity:.9 !important}
 .cst__node.is-lit .cst__label{fill:var(--ink)}
@@ -408,7 +456,8 @@ body:has(.view:target) #map{display:none}
 .sc__node.is-service .sc__dot{fill:var(--canvas);stroke:var(--ink-faint);stroke-width:2}
 .sc__node.is-service.is-destructive .sc__dot{stroke:var(--accent)}
 .sc__label{fill:var(--ink-muted);font-family:var(--font-data);font-size:12.5px;
-  pointer-events:none}
+  pointer-events:none;
+  paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round}
 .sc__node:hover .sc__dot,.sc__node:focus-visible .sc__dot{fill:var(--accent);opacity:1 !important}
 .sc__node:hover .sc__label{fill:var(--ink);opacity:1 !important}
 .sc__node:focus-visible .sc__dot{stroke:var(--focus);stroke-width:3}
@@ -474,6 +523,7 @@ a.wave__item:hover{border-color:var(--accent);color:var(--accent)}
 .tl__chart{position:relative;border:var(--hair) solid var(--rule);
   border-radius:var(--radius);background:var(--surface);padding:var(--s5) var(--s5) 0}
 .tl__svg{display:block;width:100%;height:auto}
+.tl__grid{stroke:var(--rule)}
 .tl__line{fill:none;stroke:var(--ink-faint);stroke-width:1.5;
   stroke-linejoin:round;stroke-linecap:round}
 .tl__area{fill:var(--accent);opacity:.07}
@@ -503,7 +553,9 @@ a.wave__item:hover{border-color:var(--accent);color:var(--accent)}
 .tl__state{display:grid;grid-template-columns:repeat(auto-fit,minmax(8rem,1fr));
   gap:var(--hair);background:var(--rule);border:var(--hair) solid var(--rule);
   border-radius:var(--radius);overflow:hidden}
-.tl__cell{background:var(--canvas);padding:var(--s4)}
+.tl__cell{background:var(--surface);padding:var(--s4);
+  border-top:2px solid var(--rule-strong)}
+.tl__cell--alert{border-top-color:var(--alert)}
 .tl__cell dt{font-family:var(--font-data);font-size:var(--t-micro);
   letter-spacing:var(--track-wide);text-transform:uppercase;color:var(--ink-faint)}
 .tl__cell dd{margin:0;margin-top:var(--s1);font-family:var(--font-data);

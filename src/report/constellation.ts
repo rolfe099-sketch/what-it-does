@@ -74,6 +74,27 @@ function buildEdges(graph: ResourceNode[]): LayoutEdge[] {
     .slice(0, EDGE_LIMIT);
 }
 
+/**
+ * A scale reference behind the map, like the rings of a range scope.
+ *
+ * Functional, not ornamental: the rings give the eye a fixed frame to judge
+ * position and drift against while panning, and the centre mark says where
+ * "rest" is after a zoom. It pans and zooms WITH the nodes because it is part
+ * of the map, which is what makes it a reference rather than wallpaper.
+ */
+function graticule(width: number, height: number): string {
+  const cx = width / 2;
+  const cy = height / 2;
+  const unit = Math.min(width, height);
+  const rings = [0.18, 0.33, 0.48]
+    .map((t) => `<circle cx="${cx}" cy="${cy}" r="${(unit * t).toFixed(0)}" opacity="${t === 0.48 ? '.5' : '1'}"/>`)
+    .join('');
+  const arm = unit * 0.02;
+  return `<g class="cst__grid" aria-hidden="true">${rings}
+    <path class="cst__grid-mark" d="M${(cx - arm).toFixed(0)} ${cy} h${(arm * 2).toFixed(0)} M${cx} ${(cy - arm).toFixed(0)} v${(arm * 2).toFixed(0)}" opacity=".6"/>
+  </g>`;
+}
+
 export interface Constellation {
   svg: string;
   nodeCount: number;
@@ -155,6 +176,8 @@ export function constellation(graph: ResourceNode[], resSlug: (key: string) => s
         aria-label="${escape(res.resource.name)}: reached by ${res.touches.length} ${plural(res.touches.length, 'behaviour', 'behaviours')}">
         <circle class="cst__hit" cx="${pos.x.toFixed(1)}" cy="${pos.y.toFixed(1)}"
           r="${Math.max(pos.r + 6, 14).toFixed(1)}" />
+        <circle class="cst__glow" cx="${pos.x.toFixed(1)}" cy="${pos.y.toFixed(1)}"
+          r="${(pos.r * 1.9).toFixed(1)}" />
         <circle class="cst__dot" cx="${pos.x.toFixed(1)}" cy="${pos.y.toFixed(1)}"
           r="${pos.r.toFixed(1)}" />
         ${label}
@@ -168,6 +191,7 @@ export function constellation(graph: ResourceNode[], resSlug: (key: string) => s
     <desc id="cst-desc">${graph.length} ${plural(graph.length, 'resource', 'resources')}. Larger means more behaviours reach it.
       Lines connect resources that some behaviour uses together. The same information is
       listed as text under "What it depends on".</desc>
+    ${graticule(result.width, result.height)}
     <g class="cst__edges">${edgeMarkup}</g>
     <g class="cst__nodes">${nodeMarkup}</g>
   </svg>`;

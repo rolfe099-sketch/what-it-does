@@ -69,6 +69,11 @@ export const TOKENS = `
   --alert:#B01B3F;           /* RESERVED: findings only */
   --alert-wash:#FBE9EE;
   --ok:#0F6A45;
+  --ok-wash:#E1F1E9;         /* the clean-bill-of-health seal; ok glyph on it: 5.67 / 7.53 dark */
+  /* Chart node halo opacity. A halo is hierarchy, not decoration — it scales
+     with the node, so the biggest blast radius glows the most. Faint in light
+     (paper does not glow), stronger in dark (instruments at night do). */
+  --glow:.10;
 
   /* ── structure ─────────────────────────────────────────────────────── */
   --rule:#DCE2E9;            /* decorative hairline */
@@ -149,6 +154,8 @@ export const TOKENS = `
     --alert:#F87389;
     --alert-wash:#2E1119;
     --ok:#3FCF74;
+    --ok-wash:#0E2B1B;
+    --glow:.22;
 
     --rule:#222A34;
     --rule-strong:#626D79;
@@ -173,6 +180,8 @@ export const TOKENS = `
   --alert:#F87389;
   --alert-wash:#2E1119;
   --ok:#3FCF74;
+  --ok-wash:#0E2B1B;
+  --glow:.22;
 
   --rule:#222A34;
   --rule-strong:#626D79;

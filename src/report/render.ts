@@ -534,8 +534,9 @@ function renderStep(step: Step, index: number, reader: SourceReader | null): str
     .map((u) => `<p class="flag"><span class="flag__mark" aria-hidden="true">&#9650;</span><span>${withCode(u.detail)}</span></p>`)
     .join('');
 
-  return `<li class="step${consequential || isGuard ? ' step--big' : ''}">
-    <span class="step__node num" aria-hidden="true">${index + 1}</span>
+  const shape = isGuard ? ' step--guard' : step.kind === 'responds' ? ' step--end' : '';
+  return `<li class="step${consequential || isGuard ? ' step--big' : ''}${shape}">
+    <span class="step__node num" aria-hidden="true"><i>${index + 1}</i></span>
     <span class="step__tag">${escape(STEP_LABEL[step.kind] ?? '')}</span>
     <p class="step__label">${withCode(step.label)}${
       step.otherwise
@@ -830,11 +831,18 @@ function timelineView(timeline: Timeline): string {
   const rules = points
     .map(
       (_, i) => `
-#tl-${i}:checked ~ .tl__track [for="tl-${i}"] .tl__pin{background:var(--accent);border-color:var(--accent);transform:scale(1.35)}
+#tl-${i}:checked ~ .tl__track [for="tl-${i}"] .tl__pin{background:var(--accent);border-color:var(--accent);transform:scale(1.35);box-shadow:0 0 0 3px var(--accent-wash)}
 #tl-${i}:checked ~ .tl__track [for="tl-${i}"] .tl__when{color:var(--ink)}
 #tl-${i}:checked ~ .tl__panels #tl-panel-${i}{display:block}
 #tl-${i}:checked ~ .tl__chart .tl__head-${i}{opacity:1}`,
     )
+    .join('');
+
+  const gridLines = [0.25, 0.5, 0.75]
+    .map((t) => {
+      const y = (PAD_Y + (H - PAD_Y * 2) * t).toFixed(1);
+      return `<line class="tl__grid" x1="${PAD_X}" y1="${y}" x2="${W - PAD_X}" y2="${y}"/>`;
+    })
     .join('');
 
   const heads = points
@@ -930,6 +938,7 @@ function timelineView(timeline: Timeline): string {
         <div class="tl__chart">
           <svg class="tl__svg" viewBox="0 0 ${W} ${H}" role="img"
                aria-label="Ways into the application at each scan, oldest on the left.">
+            ${gridLines}
             <polygon class="tl__area" points="${area}" />
             <polyline class="tl__line" points="${behLine}" />
             ${anyGaps ? `<polyline class="tl__gapline" points="${gapLine}" />` : ''}
