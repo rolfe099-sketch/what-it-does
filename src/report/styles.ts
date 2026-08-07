@@ -423,6 +423,46 @@ body:has(.view:target) #map{display:none}
   color:var(--ink-faint);pointer-events:none;transition:opacity var(--t-base) var(--ease)}
 .sc.is-touched .sc__hint{opacity:0}
 
+/* ── simulation: a change propagating outward ───────────────────────────
+   Waves hang off a spine, like the walkthrough steps, because that is what
+   they are: an ordered sequence where each step follows from the one above.
+   Wave one is drawn as observed fact; everything after it is visibly softer,
+   because everything after it is inference. */
+.sim{margin-top:var(--s6);max-width:var(--col-main)}
+.sim__premise{font-family:var(--font-display);font-size:var(--t-h2);font-weight:500;
+  line-height:var(--lh-snug);letter-spacing:var(--track-tight);color:var(--ink)}
+.sim__total{font-family:var(--font-data);font-size:var(--t-meta);color:var(--ink-muted);
+  margin-top:var(--s2)}
+.sim__total b{color:var(--alert);font-weight:500}
+
+.waves{margin-top:var(--s6);position:relative}
+.waves::before{content:"";position:absolute;left:13px;top:10px;bottom:10px;width:1px;
+  background:var(--rule)}
+.wave{position:relative;padding-left:var(--s7);padding-bottom:var(--s6)}
+.wave:last-child{padding-bottom:0}
+.wave__node{position:absolute;left:0;top:0;width:27px;height:27px;border-radius:50%;
+  background:var(--canvas);border:var(--hair) solid var(--rule-strong);
+  display:grid;place-items:center;font-family:var(--font-data);font-size:var(--t-small);
+  color:var(--ink-muted);font-variant-numeric:tabular-nums}
+.wave--direct .wave__node{border-color:var(--alert);color:var(--alert);
+  box-shadow:0 0 0 3px var(--alert-wash)}
+.wave__top{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap}
+.wave__title{font-size:var(--t-lead);font-weight:600;line-height:var(--lh-snug);color:var(--ink)}
+.wave--inferred .wave__title{font-weight:500;color:var(--ink-muted)}
+.wave__detail{margin-top:var(--s2);font-size:var(--t-meta);color:var(--ink-muted);
+  max-width:var(--measure)}
+.wave__items{margin-top:var(--s4);display:flex;flex-direction:column;gap:var(--s2)}
+.wave__item{display:flex;gap:var(--s3);align-items:baseline;font-size:var(--t-meta);
+  padding:var(--s2) var(--s3);background:var(--surface);
+  border:var(--hair) solid var(--rule);border-radius:var(--radius);
+  text-decoration:none;color:var(--ink)}
+a.wave__item:hover{border-color:var(--accent);color:var(--accent)}
+.wave__item--res{font-family:var(--font-data)}
+.wave__mark{color:var(--ink-faint);flex:none;font-family:var(--font-data)}
+.wave--direct .wave__mark{color:var(--alert)}
+.wave__more{font-family:var(--font-data);font-size:var(--t-small);color:var(--ink-faint);
+  padding-left:var(--s3)}
+
 /* ── drift ──────────────────────────────────────────────────────────── */
 .drift{margin-top:var(--s6);display:flex;flex-direction:column;gap:var(--s4);
   max-width:var(--col-main)}

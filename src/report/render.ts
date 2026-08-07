@@ -47,6 +47,7 @@ import {
   resourcesOf,
   type ResourceNode,
 } from '../extract/graph.js';
+import { simulate } from '../extract/simulate.js';
 import { constellation } from './constellation.js';
 import { starChart } from './starchart.js';
 import type { DriftResult } from './drift.js';
@@ -332,8 +333,74 @@ function resourceList(graph: ResourceNode[], shown: ResourceNode[]): string {
     .join('')}</div>`;
 }
 
+/** How many items to list per wave before folding the rest into a count. */
+const WAVE_ITEM_LIMIT = 8;
+
+function cascade(node: ResourceNode, graph: ResourceNode[], linkable: Set<string>,
+                 linkableResources: Set<string>): string {
+  const sim = simulate(node, graph);
+
+  const waves = sim.waves
+    .map((wave) => {
+      const items: string[] = [];
+
+      for (const b of wave.behaviours.slice(0, WAVE_ITEM_LIMIT)) {
+        const body = `<span class="wave__mark" aria-hidden="true">→</span><span>${escape(b.title)}</span>`;
+        items.push(
+          linkable.has(b.id)
+            ? `<a class="wave__item" href="#${slug(b.id)}">${body}</a>`
+            : `<span class="wave__item">${body}</span>`,
+        );
+      }
+
+      for (const r of wave.resources.slice(0, WAVE_ITEM_LIMIT)) {
+        const body = `<span class="wave__mark" aria-hidden="true">~</span><span>${escape(r.resource.name)}</span>`;
+        items.push(
+          linkableResources.has(r.key)
+            ? `<a class="wave__item wave__item--res" href="#${resSlug(r.key)}">${body}</a>`
+            : `<span class="wave__item wave__item--res">${body}</span>`,
+        );
+      }
+
+      const shown = Math.min(WAVE_ITEM_LIMIT, wave.behaviours.length) +
+                    Math.min(WAVE_ITEM_LIMIT, wave.resources.length);
+      const total = wave.behaviours.length + wave.resources.length;
+
+      return `<div class="wave wave--${wave.certainty}">
+        <span class="wave__node" aria-hidden="true">${wave.order}</span>
+        <div class="wave__top">
+          <span class="wave__title">${escape(wave.title)}</span>
+          <span class="badge${wave.certainty === 'direct' ? ' badge--likely' : ''}">${
+            wave.certainty === 'direct' ? 'in the code' : 'worked out'
+          }</span>
+          <span class="wave__more">${total}</span>
+        </div>
+        <p class="wave__detail">${escape(wave.detail)}</p>
+        <div class="wave__items">${items.join('')}</div>
+        ${total > shown ? `<p class="wave__more">and ${total - shown} more</p>` : ''}
+      </div>`;
+    })
+    .join('');
+
+  return `<div class="sim">
+    <div class="section__head"><h3 class="h2">What happens next</h3></div>
+    <p class="sim__premise" style="margin-top:var(--s5)">${escape(sim.premise)}…</p>
+    <p class="sim__total"><b>${sim.totalBehaviours}</b> ${plural(sim.totalBehaviours, 'behaviour', 'behaviours')} affected in total</p>
+    <div class="waves">${waves}</div>
+    <div class="caveat caveat--alert">
+      <span class="caveat__label">How far to trust this</span>
+      ${sim.caveats.map((c) => escape(c)).join('<br><br>')}
+    </div>
+  </div>`;
+}
+
 /** One view per resource: what breaks if you change it, and everything that touches it. */
-function impactView(node: ResourceNode, linkable: Set<string>): string {
+function impactView(
+  node: ResourceNode,
+  linkable: Set<string>,
+  graph: ResourceNode[],
+  linkableResources: Set<string>,
+): string {
   const impact = impactOf(node);
 
   return `<section class="view" id="${resSlug(node.key)}" aria-label="Impact: ${escape(node.resource.name)}">
@@ -361,6 +428,8 @@ function impactView(node: ResourceNode, linkable: Set<string>): string {
             })
             .join('')}
         </div>
+
+        ${cascade(node, graph, linkable, linkableResources)}
 
         <div class="touches">
           <div class="section__head">
@@ -969,7 +1038,7 @@ ${ranked
   .join('')}
 
 <!-- ══ IMPACT ═══════════════════════════════════════════════════════════ -->
-${topResources.map((node) => impactView(node, linkable)).join('')}
+${topResources.map((node) => impactView(node, linkable, graph, linkableResources)).join('')}
 
 <!-- ══ CONSTELLATION ════════════════════════════════════════════════════ -->
 ${spaceView(graph)}
