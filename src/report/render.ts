@@ -70,6 +70,15 @@ export interface ReportData {
 const WALKTHROUGH_LIMIT = 30;
 /** Groups shown before the tail is folded into "Everything else". */
 const GROUP_LIMIT = 11;
+/**
+ * Resources listed on the map, and given their own impact view.
+ *
+ * dub reaches 376 distinct tables and services. Listing all of them is the same
+ * enumeration failure the behaviour grouping exists to avoid — and it doubled
+ * the file size. The ones with the widest blast radius are the ones worth
+ * seeing; the tail is counted honestly instead.
+ */
+const RESOURCE_LIMIT = 15;
 
 // ---------------------------------------------------------------------------
 // Text
@@ -295,11 +304,11 @@ function groupList(groups: Group[], linkable: Set<string>): string {
     .join('')}</div>`;
 }
 
-function resourceList(graph: ResourceNode[]): string {
-  if (graph.length === 0) return '';
+function resourceList(graph: ResourceNode[], shown: ResourceNode[]): string {
+  if (shown.length === 0) return '';
   const max = Math.max(...graph.map((n) => n.touches.length));
 
-  return `<div class="res-list">${graph
+  return `<div class="res-list">${shown
     .map((node) => {
       const width = Math.max(3, Math.round((node.touches.length / max) * 100));
       const n = node.touches.length;
@@ -418,7 +427,12 @@ function codeBlock(reader: SourceReader, file: string, line: number): string {
   </div>`;
 }
 
-function walkthrough(b: Behaviour, reader: SourceReader | null, graph: ResourceNode[]): string {
+function walkthrough(
+  b: Behaviour,
+  reader: SourceReader | null,
+  graph: ResourceNode[],
+  linkableResources: Set<string>,
+): string {
   const deps = resourcesOf(b);
   const neighbours = neighboursOf(b, graph);
   const steps = sequence(b);
@@ -494,9 +508,15 @@ function walkthrough(b: Behaviour, reader: SourceReader | null, graph: ResourceN
               <div class="res-list" style="margin-top:var(--s5)">
                 ${deps
                   .map((r) => {
-                    const node = graph.find((n) => n.resource.name === r.name && n.resource.kind === r.kind);
+                    const key = `${r.kind}:${r.name.toLowerCase()}`;
+                    const node = graph.find((n) => n.key === key);
                     const others = node ? node.touches.length - 1 : 0;
-                    return `<a class="res" href="#${resSlug(`${r.kind}:${r.name.toLowerCase()}`)}">
+                    // Only link where an impact view was actually emitted.
+                    const open = linkableResources.has(key)
+                      ? `<a class="res" href="#${resSlug(key)}">`
+                      : '<div class="res">';
+                    const close = linkableResources.has(key) ? '</a>' : '</div>';
+                    return `${open}
                     <div class="res__top">
                       <span class="res__name">${escape(r.name)}</span>
                       <span class="res__kind">${escape(r.kind)}</span>
@@ -506,7 +526,7 @@ function walkthrough(b: Behaviour, reader: SourceReader | null, graph: ResourceN
                         ? `<b>${others}</b> other ${plural(others, 'behaviour', 'behaviours')} also reach this`
                         : 'Nothing else reaches this'
                     }</span></div>
-                  </a>`;
+                  ${close}`;
                   })
                   .join('')}
               </div>
@@ -635,6 +655,8 @@ export function renderReport(data: ReportData): string {
   const reader = data.includeCode ? new SourceReader(data.root) : null;
   const groups = grouped(behaviours);
   const graph = buildResourceGraph(behaviours);
+  const topResources = graph.slice(0, RESOURCE_LIMIT);
+  const linkableResources = new Set(topResources.map((n) => n.key));
 
   const gapCount = behaviours.reduce((n, b) => n + b.gaps.length, 0);
   const configCount = behaviours.reduce(
@@ -758,17 +780,27 @@ export function renderReport(data: ReportData): string {
         ? `<section class="section">
             <div class="section__head">
               <h2 class="h2">What it depends on</h2>
-              <span class="section__index">${graph.length} ${plural(graph.length, 'thing', 'things')} · widest reach first</span>
+              <span class="section__index">${
+                graph.length > topResources.length
+                  ? `${topResources.length} of ${graph.length}`
+                  : `${graph.length} ${plural(graph.length, 'thing', 'things')}`
+              } · widest reach first</span>
             </div>
             <p class="lead" style="margin-top:var(--s4)">Every table and outside service
             this application touches, and how much of it would notice if one changed.</p>
-            ${resourceList(graph)}
+            ${resourceList(graph, topResources)}
             <div class="caveat">
               <span class="caveat__label">This is the question behind "I'm afraid to touch it"</span>
               Open any of these to see exactly what breaks if you rename it, change
               its shape, or lose it. The list is complete for names written literally
               in the code — anything reached through a name chosen at runtime is
               marked, because we cannot follow it.
+              ${
+                graph.length > topResources.length
+                  ? `<br><br><strong>${graph.length - topResources.length} more</strong> are reached by
+                     fewer behaviours and are not listed here.`
+                  : ''
+              }
             </div>
           </section>`
         : ''
@@ -816,11 +848,11 @@ export function renderReport(data: ReportData): string {
 <!-- ══ WALKTHROUGHS ═════════════════════════════════════════════════════ -->
 ${ranked
   .filter((b) => linkable.has(b.id))
-  .map((b) => walkthrough(b, reader, graph))
+  .map((b) => walkthrough(b, reader, graph, linkableResources))
   .join('')}
 
 <!-- ══ IMPACT ═══════════════════════════════════════════════════════════ -->
-${graph.map((node) => impactView(node, linkable)).join('')}
+${topResources.map((node) => impactView(node, linkable)).join('')}
 
 <!-- ══ DRIFT ════════════════════════════════════════════════════════════ -->
 ${data.drift ? driftView(data.drift) : ''}
