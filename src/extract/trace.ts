@@ -17,6 +17,7 @@ import * as path from 'node:path';
 import ts from 'typescript';
 import type { Effect, Unknown } from '../model.js';
 import { detectEffects } from './effects.js';
+import { containsIdentityGuard } from './flow.js';
 import type { Resolver } from './resolve.js';
 
 export const DEFAULT_DEPTH = 3;
@@ -135,6 +136,24 @@ function calledNames(sourceFile: ts.SourceFile, range?: { pos: number; end: numb
 
   visit(sourceFile);
   return names;
+}
+
+/** The outermost node fully contained by a range, for scoped shape checks. */
+function sliceOf(
+  sourceFile: ts.SourceFile,
+  range: { pos: number; end: number },
+): ts.Node | undefined {
+  let found: ts.Node | undefined;
+  const visit = (n: ts.Node): void => {
+    if (found) return;
+    if (n.getStart(sourceFile) >= range.pos && n.getEnd() <= range.end) {
+      found = n;
+      return;
+    }
+    ts.forEachChild(n, visit);
+  };
+  ts.forEachChild(sourceFile, visit);
+  return found;
 }
 
 /** Span of a top-level declaration by exported or local name. */
@@ -323,6 +342,7 @@ export function traceFrom(
   direct.effects.forEach(addEffect);
   direct.unknowns.forEach(addUnknown);
 
+
   if (depth > 0) {
     const imports = collectImports(sourceFile);
     const called = calledNames(sourceFile, range);
@@ -366,6 +386,28 @@ export function traceFrom(
       const nested = traceFrom(context, targetFile, targetRange, depth - 1, seen);
       nested.effects.forEach(addEffect);
       nested.unknowns.forEach(addUnknown);
+    }
+  }
+
+  /**
+   * A guard recognised by SHAPE rather than by name — but only as a FALLBACK.
+   *
+   * The name heuristic misses anyone who called their wrapper `gate` or
+   * `ensureCaller`; an early exit on an identity condition means the same thing
+   * regardless of spelling. Running it only when nothing else found an auth
+   * check keeps a well-understood behaviour from listing the same fact three
+   * times over, which is how a report starts feeling padded.
+   */
+  if (![...effectMap.values()].some((e) => e.isAuthCheck)) {
+    const scope = range ? sliceOf(sourceFile, range) : sourceFile;
+    if (scope && containsIdentityGuard(scope)) {
+      addEffect({
+        kind: 'reads-data',
+        description: 'Checks who is asking, then stops if the answer is wrong',
+        source: { file: repoPath, line: 1 },
+        confidence: 'likely',
+        isAuthCheck: true,
+      });
     }
   }
 

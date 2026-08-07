@@ -12,6 +12,7 @@ import ts from 'typescript';
 import type { Behaviour, Trigger } from '../model.js';
 import { createResolver } from './resolve.js';
 import { detectGaps } from './gaps.js';
+import { extractSteps } from './flow.js';
 import type { MiddlewareInfo } from './nextjs/middleware.js';
 import { createTraceContext, traceFrom, DEFAULT_DEPTH, type TraceContext } from './trace.js';
 
@@ -95,11 +96,16 @@ export function buildBehaviours(
 
     const traced = traceFrom(context, trigger.source.file, range, context.maxDepth);
 
+    // Real ordered steps from the entry function's own body, replacing the
+    // old approach of sorting effects by file and line — which could not show
+    // sequence across files, and could not show that a check stops everything.
+    const steps = sourceFile ? extractSteps(sourceFile, trigger.source.file, range) : [];
+
     const behaviour: Behaviour = {
       id: idFor(trigger),
       title: titleFor(trigger),
       trigger,
-      steps: [],
+      steps,
       effects: traced.effects,
       unknowns: traced.unknowns,
       gaps: [],

@@ -33,6 +33,7 @@ import {
   type Behaviour,
   type Effect,
   type EffectKind,
+  type Step,
   type Unknown,
 } from '../model.js';
 import type { MiddlewareInfo } from '../extract/nextjs/middleware.js';
@@ -500,6 +501,54 @@ function codeBlock(reader: SourceReader, file: string, line: number): string {
   </div>`;
 }
 
+
+const STEP_LABEL: Record<string, string> = {
+  guard: 'Stops here if this fails',
+  branch: 'Branches',
+  gets: 'Works something out',
+  does: 'Changes something',
+  responds: 'Answers',
+};
+
+/**
+ * One step of a walkthrough.
+ *
+ * A guard is drawn differently from everything else because it IS different:
+ * every step below it is conditional on it passing. Drawing it as just another
+ * line would hide the single most important thing about the sequence.
+ */
+function renderStep(step: Step, index: number, reader: SourceReader | null): string {
+  const consequential = step.effects.some((e) => isBig(e.kind));
+  const isGuard = step.kind === 'guard';
+
+  const extras = step.effects
+    .slice(1)
+    .map(
+      (e) =>
+        `<li class="fx__row${isBig(e.kind) ? '' : ' fx--minor'}">${pip(e.kind)}<span>${withCode(e.description)}</span></li>`,
+    )
+    .join('');
+
+  const warnings = step.unknowns
+    .filter((u) => u.reason === 'config-dependent')
+    .map((u) => `<p class="flag"><span class="flag__mark" aria-hidden="true">&#9650;</span><span>${withCode(u.detail)}</span></p>`)
+    .join('');
+
+  return `<li class="step${consequential || isGuard ? ' step--big' : ''}">
+    <span class="step__node num" aria-hidden="true">${index + 1}</span>
+    <span class="step__tag">${escape(STEP_LABEL[step.kind] ?? '')}</span>
+    <p class="step__label">${withCode(step.label)}${
+      step.otherwise
+        ? ` <span class="hedge">&mdash; otherwise it ${escape(step.otherwise)}</span>`
+        : ''
+    }</p>
+    ${extras ? `<ul class="fx">${extras}</ul>` : ''}
+    ${warnings}
+    <p class="step__where">${escape(step.source.file)}:${step.source.line}</p>
+    ${reader ? codeBlock(reader, step.source.file, step.source.line) : ''}
+  </li>`;
+}
+
 function walkthrough(
   b: Behaviour,
   reader: SourceReader | null,
@@ -508,7 +557,22 @@ function walkthrough(
 ): string {
   const deps = resourcesOf(b);
   const neighbours = neighboursOf(b, graph);
-  const steps = sequence(b);
+  /**
+   * Prefer the behaviour's REAL statements. Falling back to effects sorted by
+   * file and line is still honest, but it cannot show that a check stops
+   * everything, so the caveat below changes to match which one is in use.
+   */
+  const usingRealSteps = b.steps.length > 0;
+  const steps: Step[] = usingRealSteps
+    ? b.steps
+    : sequence(b).map((e) => ({
+        kind: 'does' as const,
+        label: e.description,
+        source: e.source,
+        effects: [e],
+        unknowns: [],
+      }));
+
   const configs = b.unknowns.filter((u) => u.reason === 'config-dependent');
 
   return `<section class="view" id="${slug(b.id)}" aria-label="Walkthrough: ${escape(b.title)}">
@@ -545,89 +609,27 @@ function walkthrough(
                 <h3 class="h2">What it does</h3>
                 <span class="section__index">${steps.length} ${plural(steps.length, 'step', 'steps')}</span>
               </div>
-              <div class="caveat">
-                <span class="caveat__label">Read this as source order, not run order</span>
-                These are listed in the order they appear in your code. We read the
-                code without running it, so we cannot know which branch actually
-                executes first — a condition or an early return can change it.
-              </div>
+              ${
+                usingRealSteps
+                  ? `<div class="caveat">
+                      <span class="caveat__label">Read top to bottom</span>
+                      These are the statements of this behaviour in the order they are
+                      written. A step marked <strong>stops here</strong> ends everything
+                      below it when its check fails. Work reached through other files is
+                      listed but not placed in sequence — we can see that it happens, not
+                      exactly when.
+                    </div>`
+                  : `<div class="caveat">
+                      <span class="caveat__label">Read this as source order, not run order</span>
+                      We could not read this behaviour's own body, so these are listed in
+                      the order they appear across your files. We read the code without
+                      running it, so we cannot know which branch executes first.
+                    </div>`
+              }
               <ol class="steps">
-                ${steps
-                  .map(
-                    (e, i) => `<li class="step${isBig(e.kind) ? ' step--big' : ''}">
-                  <span class="step__node num" aria-hidden="true">${i + 1}</span>
-                  <span class="step__tag">${escape(EFFECT_LABELS[e.kind])}</span>
-                  <p class="step__label">${withCode(e.description)}${
-                    e.confidence === 'likely'
-                      ? ' <span class="hedge">— inferred from a name, not a known library call</span>'
-                      : ''
-                  }</p>
-                  <p class="step__where">${escape(e.source.file)}:${e.source.line}</p>
-                  ${reader ? codeBlock(reader, e.source.file, e.source.line) : ''}
-                </li>`,
-                  )
-                  .join('')}
+                ${steps.map((step, i) => renderStep(step, i, reader)).join('')}
               </ol>
             </div>`
-      }
-
-      ${
-        deps.length > 0
-          ? `<div class="section">
-              <div class="section__head">
-                <h3 class="h2">What it depends on</h3>
-                <span class="section__index">${deps.length}</span>
-              </div>
-              <div class="res-list" style="margin-top:var(--s5)">
-                ${deps
-                  .map((r) => {
-                    const key = `${r.kind}:${r.name.toLowerCase()}`;
-                    const node = graph.find((n) => n.key === key);
-                    const others = node ? node.touches.length - 1 : 0;
-                    // Only link where an impact view was actually emitted.
-                    const open = linkableResources.has(key)
-                      ? `<a class="res" href="#${resSlug(key)}">`
-                      : '<div class="res">';
-                    const close = linkableResources.has(key) ? '</a>' : '</div>';
-                    return `${open}
-                    <div class="res__top">
-                      <span class="res__name">${escape(r.name)}</span>
-                      <span class="res__kind">${escape(r.kind)}</span>
-                    </div>
-                    <div class="res__meta"><span>${
-                      others > 0
-                        ? `<b>${others}</b> other ${plural(others, 'behaviour', 'behaviours')} also reach this`
-                        : 'Nothing else reaches this'
-                    }</span></div>
-                  ${close}`;
-                  })
-                  .join('')}
-              </div>
-            </div>`
-          : ''
-      }
-
-      ${
-        neighbours.length > 0
-          ? `<div class="section">
-              <div class="section__head">
-                <h3 class="h2">Change this and these may notice</h3>
-                <span class="section__index">${neighbours.length} sharing data</span>
-              </div>
-              <div class="caveat">
-                <span class="caveat__label">Why these are listed</span>
-                Each of these reaches at least one of the same tables or services.
-                They are not necessarily broken by a change here — they are where
-                you would look first if something went wrong after one.
-              </div>
-              <div class="touches">
-                ${neighbours
-                  .slice(0, 12)
-                  .map((n) => `<div class="touch"><span class="touch__title">${escape(n.title)}</span></div>`)
-                  .join('')}
-              </div>
-            </div>`
-          : ''
       }
 
       ${

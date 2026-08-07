@@ -209,12 +209,36 @@ export interface Gap {
   source: SourceRef;
 }
 
+/**
+ * What a step is doing, which changes how it should be drawn.
+ *
+ * `guard` is the one that earns its place: a check followed by an early exit is
+ * structurally different from an ordinary statement, and it is the shape of
+ * every authorisation check ever written. Knowing which steps are guards is what
+ * lets the walkthrough say "and it stops here if that fails" instead of listing
+ * an `if` like it were any other line.
+ */
+export type StepKind =
+  /** A check with an early exit — throw, error response, or redirect. */
+  | 'guard'
+  /** A branch that changes what happens next without ending it. */
+  | 'branch'
+  /** Something is fetched or computed and kept. */
+  | 'gets'
+  /** Something happens to the outside world. */
+  | 'does'
+  /** The behaviour ends and answers. */
+  | 'responds';
+
 export interface Step {
+  kind: StepKind;
   /** Plain language: "Checks the visitor is signed in". */
   label: string;
   source: SourceRef;
   effects: Effect[];
   unknowns: Unknown[];
+  /** For a guard: what happens if the check fails. */
+  otherwise?: string;
 }
 
 export interface Behaviour {
