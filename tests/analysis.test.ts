@@ -145,3 +145,30 @@ describe('config dependence is only reported when it decides something', () => {
     }
   });
 });
+
+describe('the AI SDK is recognised', () => {
+  // Found by scanning a real project: both of its API routes reported no
+  // effects, when calling a language model was the whole point of the app.
+  const { behaviours, graph } = scan('exports');
+
+  test('streamText is an effect, not silence', () => {
+    const h = behaviours.find((b) => b.trigger.source.file.includes('api/h'));
+    assert.ok(h, 'the route should be detected');
+    assert.ok(
+      h.effects.some((e) => e.description.includes('language model')),
+      'a route whose purpose is calling a model must not come back empty',
+    );
+  });
+
+  test('the model is a dependency you can lose', () => {
+    const model = graph.find((n) => n.resource.name === 'language model');
+    assert.ok(model, 'it should appear in the dependency graph as a service');
+    assert.equal(model.resource.kind, 'service');
+  });
+
+  test('the cost is stated, because that is the part that surprises people', () => {
+    const h = behaviours.find((b) => b.trigger.source.file.includes('api/h'))!;
+    const call = h.effects.find((e) => e.description.includes('language model'))!;
+    assert.match(call.description, /costs money/);
+  });
+});

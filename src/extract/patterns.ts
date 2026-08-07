@@ -518,6 +518,84 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     describe: 'Creates a customer record at Stripe',
     confidence: 'certain',
   },
+  /**
+   * The Vercel AI SDK.
+   *
+   * Found by scanning a real project and noticing that both of its API routes
+   * came back with no effects at all — when calling a language model was the
+   * entire point of the application. This is the stack AI-built products are
+   * made of, so missing it meant missing the most important thing those
+   * products do.
+   *
+   * The cost is named because it is the part that surprises people: a founder
+   * who does not realise an endpoint bills per request finds out from an
+   * invoice.
+   */
+  {
+    chain: ['streamText'],
+    kind: 'calls-external',
+    resourceKind: 'service',
+    resourceName: 'language model',
+    describe: 'Asks a language model to write something, streaming the reply — this costs money per request',
+    confidence: 'certain',
+  },
+  {
+    chain: ['generateText'],
+    kind: 'calls-external',
+    resourceKind: 'service',
+    resourceName: 'language model',
+    describe: 'Asks a language model to write something — this costs money per request',
+    confidence: 'certain',
+  },
+  {
+    chain: ['streamObject'],
+    kind: 'calls-external',
+    resourceKind: 'service',
+    resourceName: 'language model',
+    describe: 'Asks a language model for structured data, streaming it — this costs money per request',
+    confidence: 'certain',
+  },
+  {
+    chain: ['generateObject'],
+    kind: 'calls-external',
+    resourceKind: 'service',
+    resourceName: 'language model',
+    describe: 'Asks a language model for structured data — this costs money per request',
+    confidence: 'certain',
+  },
+  {
+    chain: ['embedMany'],
+    kind: 'calls-external',
+    resourceKind: 'service',
+    resourceName: 'language model',
+    describe: 'Turns text into embeddings in bulk — this costs money per request',
+    confidence: 'certain',
+  },
+  {
+    chain: ['embed'],
+    kind: 'calls-external',
+    resourceKind: 'service',
+    resourceName: 'language model',
+    describe: 'Turns text into an embedding — this costs money per request',
+    confidence: 'certain',
+  },
+  {
+    // Anthropic and OpenAI SDKs directly, rather than through the AI SDK.
+    chain: ['messages', 'create'],
+    kind: 'calls-external',
+    resourceKind: 'service',
+    resourceName: 'language model',
+    describe: 'Asks a language model to reply — this costs money per request',
+    confidence: 'certain',
+  },
+  {
+    chain: ['chat', 'completions', 'create'],
+    kind: 'calls-external',
+    resourceKind: 'service',
+    resourceName: 'language model',
+    describe: 'Asks a language model to reply — this costs money per request',
+    confidence: 'certain',
+  },
   {
     chain: ['fetch'],
     kind: 'calls-external',
