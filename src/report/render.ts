@@ -35,6 +35,7 @@ import {
   type EffectKind,
   type Step,
   type Unknown,
+  plural,
 } from '../model.js';
 import type { MiddlewareInfo } from '../extract/nextjs/middleware.js';
 import { fontFaces } from './assets.js';
@@ -97,7 +98,6 @@ const escape = (v: string): string =>
 const withCode = (v: string): string =>
   escape(v).replace(/`([^`]+)`/g, '<code>$1</code>');
 
-const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
 const KIND_LABEL: Record<string, string> = {
   page: 'Page',
@@ -1106,8 +1106,8 @@ export function renderReport(data: ReportData): string {
       <div class="readout">
         <span class="readout__value">${behaviours.length}</span>
         <span class="readout__scale" aria-hidden="true">${'<i></i>'.repeat(ticks)}</span>
-        <p class="readout__caption">ways in — pages people can open, endpoints anything
-        can call, and actions your forms trigger.</p>
+        <p class="readout__caption">${plural(behaviours.length, 'way in', 'ways in')} — pages
+        people can open, endpoints anything can call, and actions your forms trigger.</p>
       </div>
     </div>
 
@@ -1126,7 +1126,7 @@ export function renderReport(data: ReportData): string {
       </div>
       <div class="stat">
         <div class="stat__label">Scan time</div>
-        <div class="stat__value">${(data.elapsedMs / 1000).toFixed(1)}s</div>
+        <div class="stat__value">${data.elapsedMs < 1000 ? `${data.elapsedMs}ms` : `${(data.elapsedMs / 1000).toFixed(1)}s`}</div>
       </div>
     </div>
 

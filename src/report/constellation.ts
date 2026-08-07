@@ -23,6 +23,7 @@
  */
 
 import type { ResourceNode } from '../extract/graph.js';
+import { plural } from '../model.js';
 import { layout, type LayoutEdge } from './layout.js';
 
 /** Above this many nodes, labels are drawn only for the largest. */
@@ -151,7 +152,7 @@ export function constellation(graph: ResourceNode[], resSlug: (key: string) => s
             (res.deletes > 0 ? ` · ${res.deletes} can delete` : '') +
             (res.resource.kind === 'service' ? ' · outside service' : ''),
         )}"
-        aria-label="${escape(res.resource.name)}: reached by ${res.touches.length} behaviours">
+        aria-label="${escape(res.resource.name)}: reached by ${res.touches.length} ${plural(res.touches.length, 'behaviour', 'behaviours')}">
         <circle class="cst__hit" cx="${pos.x.toFixed(1)}" cy="${pos.y.toFixed(1)}"
           r="${Math.max(pos.r + 6, 14).toFixed(1)}" />
         <circle class="cst__dot" cx="${pos.x.toFixed(1)}" cy="${pos.y.toFixed(1)}"
@@ -164,7 +165,7 @@ export function constellation(graph: ResourceNode[], resSlug: (key: string) => s
   const svg = `<svg class="cst__svg" viewBox="0 0 ${result.width} ${result.height}"
     role="img" aria-labelledby="cst-title cst-desc" preserveAspectRatio="xMidYMid meet">
     <title id="cst-title">Map of the tables and services this application depends on</title>
-    <desc id="cst-desc">${graph.length} resources. Larger means more behaviours reach it.
+    <desc id="cst-desc">${graph.length} ${plural(graph.length, 'resource', 'resources')}. Larger means more behaviours reach it.
       Lines connect resources that some behaviour uses together. The same information is
       listed as text under "What it depends on".</desc>
     <g class="cst__edges">${edgeMarkup}</g>

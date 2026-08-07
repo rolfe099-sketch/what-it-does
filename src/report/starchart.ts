@@ -20,6 +20,7 @@
  */
 
 import type { ResourceNode } from '../extract/graph.js';
+import { plural } from '../model.js';
 import { fitScale, layout3d, project, type LayoutEdge } from './layout.js';
 
 const VIEW = 1000;
@@ -154,7 +155,7 @@ export function starChart(graph: ResourceNode[], resSlug: (key: string) => strin
             (res.deletes > 0 ? ` · ${res.deletes} can delete` : '') +
             (isService ? ' · outside service' : ''),
         )}"
-        aria-label="${escape(res.resource.name)}: reached by ${r} behaviours">
+        aria-label="${escape(res.resource.name)}: reached by ${r} ${plural(r, 'behaviour', 'behaviours')}">
         <circle class="sc__hit" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}"
           r="${Math.max(radius + 6, 13).toFixed(1)}" />
         <circle class="sc__dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}"

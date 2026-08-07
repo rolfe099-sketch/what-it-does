@@ -10,7 +10,12 @@
 
 import ts from 'typescript';
 import type { Effect, Resource, SourceRef, Unknown } from '../model.js';
-import { AUTH_CHECK_NAME_PATTERNS, EFFECT_PATTERNS, type EffectPattern } from './patterns.js';
+import {
+  AUTH_CHECK_NAME_PATTERNS,
+  EFFECT_PATTERNS,
+  SERVICE_HOSTS,
+  type EffectPattern,
+} from './patterns.js';
 
 // ---------------------------------------------------------------------------
 // Flattening a call chain
@@ -134,6 +139,28 @@ function rawName(arg: ts.Expression | undefined): { name: string; literal: boole
 }
 
 /**
+ * The hostname from a URL written literally in the source.
+ *
+ * Template literals count as long as the host is in the fixed part —
+ * `` `https://api.telegram.org/bot${token}/send` `` names its service just as
+ * plainly as a plain string does, and refusing to read it would drop a whole
+ * common style for no reason. A URL assembled from a variable host is genuinely
+ * unknowable, and returns null rather than a guess.
+ */
+function literalHost(arg: ts.Expression | undefined): string | null {
+  if (!arg) return null;
+  let text: string | null = null;
+  if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) text = arg.text;
+  else if (ts.isTemplateExpression(arg)) text = arg.head.text;
+  if (!text) return null;
+
+  const match = /^https?:\/\/([^/?#\s]+)/i.exec(text);
+  if (!match) return null;
+  // Strip credentials and port, neither of which identifies the service.
+  return match[1].replace(/^[^@]*@/, '').replace(/:\d+$/, '').toLowerCase();
+}
+
+/**
  * The first matching pattern wins. The table is ordered by consequence, so
  * `.from(t).delete().select()` is reported as a deletion rather than a read —
  * which is the order a founder needs to hear it in.
@@ -145,6 +172,22 @@ function matchPattern(
     const at = indexOfRun(detected.chain, pattern.chain);
     if (at === -1) continue;
     if (pattern.root && !(detected.root && pattern.root.test(detected.root))) continue;
+
+    // A literal URL outranks the call it was passed to. `fetch()` is the same
+    // function whether it charges a card or fetches a forecast; the hostname is
+    // not. This can promote an effect into a consequential kind, so it runs
+    // before anything else decides what this call is.
+    if (pattern.refineByUrl !== undefined) {
+      const host = literalHost(detected.args[at + pattern.refineByUrl]);
+      const known = host ? SERVICE_HOSTS.find((s) => s.host.test(host)) : undefined;
+      if (known) {
+        return {
+          pattern: { ...pattern, kind: known.kind, confidence: 'certain' },
+          description: known.describe,
+          resource: { kind: 'service', name: known.service, literal: true },
+        };
+      }
+    }
 
     let description = pattern.describe;
     let resource: Resource | undefined;
@@ -308,14 +351,27 @@ export function detectEffects(
       // process.env.SOMETHING — the highest-value unknown we produce. A
       // behaviour that changes with an environment variable is invisible in the
       // code and is exactly what surprises people in production.
-      if (
+      /**
+       * Config, whichever runtime supplies it.
+       *
+       * Node hands it over as `process.env.X`. Cloudflare Workers and Pages
+       * Functions hand it over as `context.env`, usually destructured to a
+       * bare `env.X`. Only checking the Node shape meant a Pages Function
+       * branching on an API key looked like it branched on nothing.
+       */
+      const nodeStyle =
         ts.isPropertyAccessExpression(node) &&
         ts.isPropertyAccessExpression(node.expression) &&
         ts.isIdentifier(node.expression.expression) &&
         node.expression.expression.text === 'process' &&
-        node.expression.name.text === 'env' &&
-        isUsedInDecision(node)
-      ) {
+        node.expression.name.text === 'env';
+
+      const workerStyle =
+        ts.isPropertyAccessExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === 'env';
+
+      if ((nodeStyle || workerStyle) && isUsedInDecision(node)) {
         const varName = node.name.text;
         if (!seenEnvVars.has(varName)) {
           seenEnvVars.add(varName);

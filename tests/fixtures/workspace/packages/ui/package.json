@@ -1,0 +1,1 @@
+{ "name": "ui", "peerDependencies": { "next": "15.0.0" }, "devDependencies": { "next": "15.0.0" } }

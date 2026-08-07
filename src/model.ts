@@ -286,3 +286,11 @@ export interface ScanResult {
   skipped: Unknown[];
   scannedAt: string;
 }
+
+/**
+ * Countable prose. Lives here because the CLI and the report both need it and
+ * both were getting it wrong independently — "1 ways in" in the terminal, and
+ * "reached by 1 behaviours" in an aria-label, which is worse: nobody proofreads
+ * the text only a screen reader ever says.
+ */
+export const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);

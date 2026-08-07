@@ -48,7 +48,12 @@ function titleFor(trigger: Trigger): string {
     case 'server-action':
       return `A form calls ${trigger.exportName}()`;
     case 'middleware':
-      return 'Every request, before anything else';
+      // Next.js has one middleware covering matcher patterns; Cloudflare has one
+      // per directory covering its own subtree. Both arrive here as a scope, so
+      // only the all-paths case earns the unqualified sentence.
+      return trigger.urlPath === '*'
+        ? 'Every request, before anything else'
+        : `Every request to ${trigger.urlPath}, before anything else`;
   }
 }
 
@@ -60,7 +65,10 @@ function idFor(trigger: Trigger): string {
     case 'api-route':
       return `route:${trigger.methods?.join(',')} ${trigger.urlPath}`;
     case 'middleware':
-      return 'middleware';
+      // Keyed by file, not by the bare word. Cloudflare allows a _middleware
+      // per directory, and a constant id would collapse them into one entry
+      // that flickers between them on every drift diff.
+      return `middleware:${trigger.source.file}`;
     default:
       return `page:${trigger.urlPath}`;
   }
@@ -87,10 +95,23 @@ export function buildBehaviours(
   const behaviours: Behaviour[] = triggers.map((trigger) => {
     const sourceFile = context.sources.get(trigger.source.file);
 
-    // Server actions share a file with their siblings, so scope to the one
-    // function. Everything else owns its file.
+    /**
+     * Scope to the entry function whenever we know which one it is.
+     *
+     * This used to apply to server actions only, on the assumption that "a page
+     * or route file has one entry point". Scanning a real Cloudflare function
+     * disproved it: the file held two helpers above the handler, and the
+     * walkthrough dutifully reported a step from `clean()` at line 4 as the
+     * first thing the endpoint does. A route file with both GET and DELETE has
+     * the same problem, only worse — one function's guard silently vouching for
+     * the other's deletion.
+     *
+     * Scoping is only safe because the trace now follows local calls within the
+     * file; before that, narrowing the range would have lost every effect that
+     * lived in a helper below.
+     */
     const range =
-      sourceFile && trigger.kind === 'server-action' && trigger.exportName
+      sourceFile && trigger.exportName
         ? rangeOfExportedFunction(sourceFile, trigger.exportName)
         : undefined;
 

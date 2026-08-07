@@ -71,16 +71,31 @@ labelled *worked out*, not *in the code*.
 
 | | |
 |---|---|
-| Framework | Next.js **App Router** only |
+| Frameworks | Next.js **App Router**, Cloudflare **Pages Functions** |
 | Data | Supabase, Prisma, Drizzle |
 | Auth | Supabase Auth, NextAuth / Auth.js, Clerk |
 | Payments | Stripe |
 | Email | Resend, Nodemailer, common `sendEmail` helpers |
+| Models | Vercel AI SDK, Anthropic, OpenAI |
+
+Calls made with a plain `fetch` are read too, when the URL is written out: the
+hostname says what an SDK name would have. `api.stripe.com` moves money whether
+or not you imported the library — which matters most on edge runtimes, where
+there often is no library.
 
 Pages Router, Express, Remix, SvelteKit, Rails and FastAPI are not supported.
 The core model — *a behaviour is a trigger, a path and a set of effects* — is
 framework-agnostic; only the extractor is specific. Adding a framework means
 adding an extractor, not rewriting anything.
+
+Cloudflare Pages Functions was the test of that claim. It is one file,
+`src/extract/cloudflare/entrypoints.ts`, and nothing below the entry-point layer
+changed to accommodate it — the effects, guards, graph, cascade and all five
+views worked on the first run.
+
+Point it at a directory we cannot read and it says what it found rather than
+what it isn't: the framework by name if it recognises one, or the application
+one level down if you aimed at a monorepo root.
 
 If your project uses something not on this list, its calls simply won't appear.
 The scan won't fail and it won't warn you loudly, which is worth knowing.

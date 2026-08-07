@@ -10,7 +10,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawn } from 'node:child_process';
-import { detectNextJs, findEntryPoints } from './extract/nextjs/entrypoints.js';
+import { detectFramework, type Survey } from './extract/detect.js';
 import { buildBehaviours } from './extract/behaviours.js';
 import { DEFAULT_DEPTH } from './extract/trace.js';
 import { renderReport } from './report/render.js';
@@ -27,6 +27,7 @@ import {
   UNKNOWN_GUIDANCE,
   consequenceScore,
   type Behaviour,
+  plural,
   type EffectKind,
 } from './model.js';
 
@@ -46,8 +47,6 @@ const heading = (text: string) => console.log(`\n${BOLD}${text}${RESET}`);
  */
 const DETAIL_LIMIT = 12;
 const SHOW_ALL_BELOW = 16;
-
-const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
 function summariseEffects(behaviours: Behaviour[]) {
   const counts = new Map<EffectKind, number>();
@@ -135,29 +134,85 @@ function openInBrowser(file: string) {
   }
 }
 
+/**
+ * The most common first experience with this tool, so it gets written properly.
+ *
+ * "Not supported" is a fact about us, not about their code. Every line here
+ * exists to stop the person concluding the tool is broken: name what we
+ * recognised, say plainly what is missing, and point at the one thing that
+ * would change the answer.
+ */
+function reportUnsupported(survey: Survey) {
+  // A readable application one level down outranks everything else we could
+  // say, because it is the only line that comes with something to do. This is
+  // the whole experience of pointing the tool at a monorepo root.
+  if (survey.scannableChildren.length > 0) {
+    const found = survey.scannableChildren;
+    console.error(`
+${BOLD}Nothing to read at this level, but there is one level down.${RESET}`);
+    console.error(
+      `${DIM}This looks like a workspace. The applications are in subdirectories, and`,
+    );
+    console.error(`${plural(found.length, 'this one is', 'these are')} readable:${RESET}
+`);
+    for (const child of found) {
+      console.error(`  ${ACCENT}${child.dir}${RESET}${DIM}  ${child.framework}${RESET}`);
+    }
+    console.error(`
+${DIM}Scan one directly:${RESET} eriksen scan ${found[0].dir}`);
+    return;
+  }
+
+  if (survey.recognised) {
+    // "This looks like X" rather than "This is a/an X project" — the names in
+    // the table are a mix of vowels, consonants and plurals, and no article
+    // fits all of them.
+    console.error(`\n${BOLD}This looks like ${survey.recognised.name}.${RESET}`);
+    console.error(`${DIM}We recognise it but cannot read it yet - nobody has written that`);
+    console.error(`extractor. It would key on ${survey.recognised.entryHint}.${RESET}`);
+  } else if (survey.staticOnly) {
+    console.error(`\n${BOLD}There is no server-side code here.${RESET}`);
+    console.error(
+      `${DIM}No JavaScript or TypeScript that runs on a server, so there are no behaviours`,
+    );
+    console.error(`to describe. A static site does what its HTML says and nothing more.${RESET}`);
+    return;
+  } else {
+    console.error(`\n${BOLD}We could not identify a framework here.${RESET}`);
+    if (survey.nextReason) console.error(`${DIM}${survey.nextReason}${RESET}`);
+    // The count stops at a budget, so past it we know a floor and not a total.
+    // Printing the cap as if it were the answer would be a quietly invented
+    // statistic, which is the one thing this tool must never do.
+    const count = survey.codeFilesCapped
+      ? 'Thousands of source files are'
+      : `${survey.codeFiles} source ${plural(survey.codeFiles, 'file is', 'files are')}`;
+    console.error(
+      `${DIM}${count} present, but nothing declares its entry points in a`,
+    );
+    console.error(`way we know how to read.${RESET}`);
+  }
+
+  heading('What we can read today');
+  console.log(`  Next.js${DIM} - app router: pages, API routes, server actions${RESET}`);
+  console.log(`  Cloudflare Pages${DIM} - functions/: onRequest handlers${RESET}`);
+  console.log(
+    `\n${DIM}An extractor is one file. It finds entry points and describes each as a`,
+  );
+  console.log(`trigger, a path and a set of effects. Everything after that is shared.${RESET}`);
+}
+
 function scan(target: string, options: ScanOptions) {
   const root = path.resolve(target);
   console.log(`${DIM}Scanning ${root}${RESET}`);
 
-  const detected = detectNextJs(root);
-  if (!detected.isNext) {
-    console.error(`\n${BOLD}Not a Next.js project.${RESET} ${detected.reason}`);
-    console.error(
-      `${DIM}Only Next.js is supported today. Other frameworks are extractors we have not written yet.${RESET}`,
-    );
-    process.exit(1);
-  }
-
   const started = Date.now();
-  const { appDir, triggers, skipped, middleware } = findEntryPoints(root);
-
-  if (!appDir) {
-    console.error(`\n${BOLD}No app directory found.${RESET}`);
-    console.error(
-      `${DIM}This looks like a Pages Router project. We only read the App Router so far.${RESET}`,
-    );
+  const detected = detectFramework(root);
+  if (!detected.supported) {
+    reportUnsupported(detected.survey);
     process.exit(1);
   }
+
+  const { framework, where, triggers, skipped, middleware } = detected.scan;
 
   const { behaviours } = buildBehaviours(root, triggers, middleware);
   const elapsed = Date.now() - started;
@@ -173,10 +228,12 @@ function scan(target: string, options: ScanOptions) {
   const timeline = updated.scans.length >= 2 ? buildTimeline(updated) : undefined;
 
 
-  console.log(`${DIM}Next.js ${detected.version} · app router at ${appDir} · ${elapsed}ms${RESET}`);
+  console.log(`${DIM}${framework} · ${where} · ${elapsed}ms${RESET}`);
 
   // ---- What the application can do, at a glance -------------------------
-  heading(`${behaviours.length} ways into this application`);
+  heading(
+    `${behaviours.length} ${plural(behaviours.length, 'way', 'ways')} into this application`,
+  );
 
   const summary = summariseEffects(behaviours);
   if (summary.length > 0) {
@@ -266,7 +323,7 @@ function scan(target: string, options: ScanOptions) {
     const html = renderReport({
       projectName: path.basename(root),
       root,
-      framework: `Next.js ${detected.version ?? ''}`.trim(),
+      framework,
       behaviours,
       skipped,
       middleware,

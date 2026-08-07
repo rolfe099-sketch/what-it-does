@@ -62,7 +62,7 @@ export function detectNextJs(root: string): { isNext: boolean; version?: string;
 }
 
 /** App Router lives at app/ or src/app/. Nothing else is valid. */
-function findAppDir(root: string): string | null {
+export function findAppDir(root: string): string | null {
   for (const candidate of ['app', path.join('src', 'app')]) {
     const full = path.join(root, candidate);
     if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
@@ -127,7 +127,12 @@ function lineOf(sourceFile: ts.SourceFile, node: ts.Node): number {
 }
 
 interface RouteExports {
-  methods: { method: string; line: number }[];
+  /**
+   * `declared` is the function to scope analysis to, which is not always the
+   * export name: `export { handler as GET }` answers GET, but the body to read
+   * is called `handler`.
+   */
+  methods: { method: string; line: number; declared: string }[];
   /**
    * `export * from './other'` — the verbs are real but live in another file.
    * This is resolvable; we just do not follow modules yet. That makes it OUR
@@ -149,7 +154,7 @@ interface RouteExports {
  *   export { GET } from './elsewhere'                    re-export
  */
 function exportedHttpMethods(sourceFile: ts.SourceFile): RouteExports {
-  const methods: { method: string; line: number }[] = [];
+  const methods: { method: string; line: number; declared: string }[] = [];
   let wildcardReexport: RouteExports['wildcardReexport'];
 
   const isExported = (node: ts.Node): boolean =>
@@ -160,14 +165,19 @@ function exportedHttpMethods(sourceFile: ts.SourceFile): RouteExports {
     // export async function GET() {}
     if (ts.isFunctionDeclaration(statement) && statement.name && isExported(statement)) {
       const name = statement.name.text;
-      if (HTTP_METHODS.includes(name)) methods.push({ method: name, line: lineOf(sourceFile, statement) });
+      if (HTTP_METHODS.includes(name))
+        methods.push({ method: name, line: lineOf(sourceFile, statement), declared: name });
     }
 
     if (ts.isVariableStatement(statement) && isExported(statement)) {
       for (const decl of statement.declarationList.declarations) {
         // export const POST = anything
         if (ts.isIdentifier(decl.name) && HTTP_METHODS.includes(decl.name.text)) {
-          methods.push({ method: decl.name.text, line: lineOf(sourceFile, statement) });
+          methods.push({
+            method: decl.name.text,
+            line: lineOf(sourceFile, statement),
+            declared: decl.name.text,
+          });
         }
 
         // export const { POST } = serve(...)  — destructured from a factory.
@@ -176,7 +186,11 @@ function exportedHttpMethods(sourceFile: ts.SourceFile): RouteExports {
         if (ts.isObjectBindingPattern(decl.name)) {
           for (const element of decl.name.elements) {
             if (ts.isIdentifier(element.name) && HTTP_METHODS.includes(element.name.text)) {
-              methods.push({ method: element.name.text, line: lineOf(sourceFile, statement) });
+              methods.push({
+                method: element.name.text,
+                line: lineOf(sourceFile, statement),
+                declared: element.name.text,
+              });
             }
           }
         }
@@ -190,7 +204,11 @@ function exportedHttpMethods(sourceFile: ts.SourceFile): RouteExports {
       if (statement.exportClause && ts.isNamedExports(statement.exportClause)) {
         for (const element of statement.exportClause.elements) {
           if (HTTP_METHODS.includes(element.name.text)) {
-            methods.push({ method: element.name.text, line: lineOf(sourceFile, statement) });
+            methods.push({
+              method: element.name.text,
+              line: lineOf(sourceFile, statement),
+              declared: (element.propertyName ?? element.name).text,
+            });
           }
         }
       }
@@ -329,12 +347,32 @@ export function findEntryPoints(root: string): EntryPointScan {
         const { methods, wildcardReexport } = exportedHttpMethods(parsed.sourceFile);
 
         if (methods.length > 0) {
-          triggers.push({
-            kind: 'api-route',
-            urlPath: urlPathFromDir(relativeDir),
-            methods: methods.map((m) => m.method),
-            source: { file: repoPath, line: methods[0].line },
-          });
+          /**
+           * One trigger per handler FUNCTION, not per route file.
+           *
+           * GET and DELETE in the same file are two behaviours: different
+           * bodies, different guards, different consequences. Merging them
+           * meant a guard on the read excused the delete, and the walkthrough
+           * showed one function's steps under both verbs. Several exports
+           * bound to the SAME function stay together — that really is one
+           * behaviour answering two verbs.
+           */
+          const byFunction = new Map<string, typeof methods>();
+          for (const method of methods) {
+            const group = byFunction.get(method.declared);
+            if (group) group.push(method);
+            else byFunction.set(method.declared, [method]);
+          }
+
+          for (const [declared, group] of byFunction) {
+            triggers.push({
+              kind: 'api-route',
+              urlPath: urlPathFromDir(relativeDir),
+              methods: group.map((m) => m.method),
+              exportName: declared,
+              source: { file: repoPath, line: group[0].line },
+            });
+          }
           continue;
         }
 

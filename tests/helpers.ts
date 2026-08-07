@@ -10,7 +10,7 @@
 
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findEntryPoints, detectNextJs } from '../src/extract/nextjs/entrypoints.js';
+import { detectFramework } from '../src/extract/detect.js';
 import { buildBehaviours } from '../src/extract/behaviours.js';
 import { buildResourceGraph } from '../src/extract/graph.js';
 import type { Behaviour } from '../src/model.js';
@@ -19,13 +19,22 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 export const fixture = (name: string) => path.join(here, 'fixtures', name);
 
+/**
+ * Goes through the same framework router the CLI does, so a fixture is named by
+ * directory and never by framework. Which framework a fixture is written in is
+ * then a property of the fixture, not something a test has to know — and adding
+ * a third framework does not touch a single existing test.
+ */
 export function scan(name: string) {
   const root = fixture(name);
-  const detected = detectNextJs(root);
-  const { appDir, triggers, skipped, middleware } = findEntryPoints(root);
+  const detected = detectFramework(root);
+  if (!detected.supported) {
+    throw new Error(`fixture "${name}" was not recognised by any extractor`);
+  }
+  const { framework, where, triggers, skipped, middleware } = detected.scan;
   const { behaviours } = buildBehaviours(root, triggers, middleware);
   const graph = buildResourceGraph(behaviours);
-  return { root, detected, appDir, triggers, skipped, middleware, behaviours, graph };
+  return { root, framework, where, triggers, skipped, middleware, behaviours, graph };
 }
 
 /** Find a behaviour by its rendered title, for readable assertions. */

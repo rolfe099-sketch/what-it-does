@@ -53,7 +53,117 @@ export interface EffectPattern {
    * these appearing first?
    */
   authCheck?: boolean;
+  /**
+   * This call takes a URL, at this argument index, and the URL says far more
+   * than the call does. See SERVICE_HOSTS.
+   */
+  refineByUrl?: number;
 }
+
+/**
+ * What a literal URL tells us that the call does not.
+ *
+ * `fetch()` is the same function whether it fetches a weather forecast or
+ * charges a card, so matching on the call gets us as far as "calls another
+ * service" and no further. But most code writes the URL out in full, and the
+ * hostname is unambiguous: api.stripe.com moves money, api.resend.com sends
+ * mail. Reading it turns the vaguest effect we produce into one of the precise
+ * ones — including one of the three consequential kinds, which changes where it
+ * sorts and whether it can raise a finding.
+ *
+ * This matters more than it looks. SDKs are recognised by name, so a project
+ * using the Stripe SDK was already understood; a project calling the same API
+ * with fetch was not. That is not a rare style — it is what you get when there
+ * is no SDK for the runtime, which is the normal situation on Cloudflare
+ * Workers, Deno and every edge platform.
+ */
+export interface ServiceHost {
+  host: RegExp;
+  kind: EffectKind;
+  describe: string;
+  /** The name this gets as a node in the dependency graph. */
+  service: string;
+}
+
+export const SERVICE_HOSTS: ServiceHost[] = [
+  // Money first, as everywhere else in this table.
+  {
+    host: /(^|\.)stripe\.com$/i,
+    kind: 'takes-payment',
+    describe: 'Moves money through Stripe',
+    service: 'Stripe',
+  },
+  {
+    host: /(^|\.)paypal(objects)?\.com$/i,
+    kind: 'takes-payment',
+    describe: 'Moves money through PayPal',
+    service: 'PayPal',
+  },
+  {
+    host: /(^|\.)(lemonsqueezy|paddle|polar)\.(com|sh)$/i,
+    kind: 'takes-payment',
+    describe: 'Moves money through a payment provider',
+    service: 'payment provider',
+  },
+  // Email.
+  {
+    host: /(^|\.)resend\.com$/i,
+    kind: 'sends-email',
+    describe: 'Sends an email through Resend',
+    service: 'Resend',
+  },
+  {
+    host: /(^|\.)sendgrid\.com$/i,
+    kind: 'sends-email',
+    describe: 'Sends an email through SendGrid',
+    service: 'SendGrid',
+  },
+  {
+    host: /(^|\.)(mailgun\.net|postmarkapp\.com|mailchimp\.com|loops\.so|mailersend\.com)$/i,
+    kind: 'sends-email',
+    describe: 'Sends an email through an email provider',
+    service: 'email provider',
+  },
+  // Models, which cost money per call — the surprise nobody budgets for.
+  {
+    host: /(^|\.)(openai\.com|anthropic\.com|googleapis\.com|mistral\.ai|groq\.com|cohere\.(ai|com))$/i,
+    kind: 'calls-external',
+    describe: 'Asks a language model to reply — this costs money per request',
+    service: 'language model',
+  },
+  // Messaging and notification.
+  {
+    host: /(^|\.)(slack\.com|discord\.com|discordapp\.com|telegram\.org)$/i,
+    kind: 'calls-external',
+    describe: 'Posts a message to a chat service',
+    service: 'chat service',
+  },
+  {
+    host: /(^|\.)twilio\.com$/i,
+    kind: 'calls-external',
+    describe: 'Sends a text message through Twilio — this costs money per message',
+    service: 'Twilio',
+  },
+  // Data.
+  {
+    host: /(^|\.)supabase\.(co|in)$/i,
+    kind: 'reads-data',
+    describe: 'Talks to Supabase over its HTTP API',
+    service: 'Supabase',
+  },
+  {
+    host: /(^|\.)(upstash\.io|algolia(net)?\.com|typesense\.net)$/i,
+    kind: 'reads-data',
+    describe: 'Talks to a hosted data service',
+    service: 'hosted data service',
+  },
+  {
+    host: /(^|\.)github\.com$/i,
+    kind: 'calls-external',
+    describe: 'Calls the GitHub API',
+    service: 'GitHub',
+  },
+];
 
 /**
  * Ordered by consequence. The matcher takes the FIRST match per call site, so
@@ -596,17 +706,22 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     describe: 'Asks a language model to reply — this costs money per request',
     confidence: 'certain',
   },
+  // A raw fetch is the last resort, and the vaguest thing we ever say. When the
+  // URL is written literally we can do much better than "another service" —
+  // see SERVICE_HOSTS below.
   {
     chain: ['fetch'],
     kind: 'calls-external',
-    describe: "Calls another service over the network",
+    describe: 'Calls another service over the network',
     confidence: 'likely',
+    refineByUrl: 0,
   },
   {
     chain: ['axios'],
     kind: 'calls-external',
     describe: 'Calls another service over the network',
     confidence: 'likely',
+    refineByUrl: 0,
   },
 ];
 

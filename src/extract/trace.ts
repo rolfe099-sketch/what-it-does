@@ -180,6 +180,46 @@ function rangeOfSymbol(
 }
 
 /**
+ * Every function declared at the top level of a file, by name.
+ *
+ * Two reasons this is narrower than rangeOfSymbol, and both matter. Precision:
+ * following `const supabase = createClient(...)` because someone wrote
+ * `supabase.from(...)` traces into a client constructor, which describes the
+ * setup rather than the behaviour. Cost: the names a scoped trace asks about
+ * include every global it touches — JSON, Date, console — and answering each
+ * with a fresh linear scan of the file's statements is what turned a nine
+ * second scan into ten. Built once per file and cached.
+ */
+const localFunctionCache = new WeakMap<ts.SourceFile, Map<string, { pos: number; end: number }>>();
+
+function localFunctions(sourceFile: ts.SourceFile): Map<string, { pos: number; end: number }> {
+  const cached = localFunctionCache.get(sourceFile);
+  if (cached) return cached;
+
+  const found = new Map<string, { pos: number; end: number }>();
+  const span = (node: ts.Node) => ({ pos: node.getStart(sourceFile), end: node.getEnd() });
+
+  for (const statement of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name) {
+      found.set(statement.name.text, span(statement));
+      continue;
+    }
+    if (ts.isVariableStatement(statement)) {
+      for (const decl of statement.declarationList.declarations) {
+        if (!ts.isIdentifier(decl.name) || !decl.initializer) continue;
+        // const doWork = async () => {} / function () {}
+        if (ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer)) {
+          found.set(decl.name.text, span(statement));
+        }
+      }
+    }
+  }
+
+  localFunctionCache.set(sourceFile, found);
+  return found;
+}
+
+/**
  * Follow a symbol through re-exports to the file that actually declares it.
  *
  * Barrel files — `lib/auth/index.ts` containing nothing but `export * from
@@ -349,7 +389,30 @@ export function traceFrom(
 
     for (const localName of called) {
       const binding = imports.get(localName);
-      if (!binding) continue;
+
+      /**
+       * A helper declared in this same file.
+       *
+       * Only followed when we are scoped to a range, and that condition is the
+       * whole point: an unscoped trace already reads every line of the file, so
+       * following local calls would just rediscover the same effects at a cost.
+       * A scoped one would otherwise miss them entirely — and it used to. A
+       * handler whose deletion lived in a local `async function remove()` two
+       * declarations further down looked like a handler that deleted nothing,
+       * which is the exact false negative this tool exists to prevent.
+       */
+      if (!binding) {
+        if (!range) continue;
+        const local = localFunctions(sourceFile).get(localName);
+        if (!local) continue;
+        // Not into ourselves. `seen` would catch the cycle, but only after
+        // paying for it, and a recursive helper is common enough to matter.
+        if (local.pos === range.pos && local.end === range.end) continue;
+        const nested = traceFrom(context, repoPath, local, depth - 1, seen);
+        nested.effects.forEach(addEffect);
+        nested.unknowns.forEach(addUnknown);
+        continue;
+      }
 
       const resolved = context.resolver.resolve(repoPath, binding.specifier);
 
