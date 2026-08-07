@@ -216,6 +216,38 @@ ${DIM}Scan one directly:${RESET} what-it-does ${found[0].dir}`);
   console.log(`trigger, a path and a set of effects. Everything after that is shared.${RESET}`);
 }
 
+/**
+ * A name for the project, from its path.
+ *
+ * `path.basename` alone titles every monorepo report "web", because the app
+ * lives at `apps/web` and that is what the folder is called. The package.json
+ * `name` is no better — dub's says "web" too, and plenty say "my-project" or
+ * nothing at all.
+ *
+ * So: if the folder has a generic workspace name, qualify it with the nearest
+ * ancestor that does not. `dub/apps/web` becomes "dub/web", which is both
+ * recognisable and still precise when a repo holds several applications.
+ */
+const GENERIC_DIRS = new Set([
+  'web', 'app', 'apps', 'api', 'src', 'server', 'client', 'site', 'www',
+  'frontend', 'backend', 'packages', 'main', 'root',
+]);
+
+function projectNameFor(root: string): string {
+  const base = path.basename(root);
+  if (!GENERIC_DIRS.has(base.toLowerCase())) return base;
+
+  let current = root;
+  for (let hops = 0; hops < 4; hops++) {
+    const parent = path.dirname(current);
+    if (parent === current) break; // reached the filesystem root
+    const name = path.basename(parent);
+    if (!GENERIC_DIRS.has(name.toLowerCase())) return `${name}/${base}`;
+    current = parent;
+  }
+  return base;
+}
+
 function scan(target: string, options: ScanOptions) {
   const root = path.resolve(target);
   // Progress belongs on stderr in machine mode, where stdout is the payload.
@@ -351,7 +383,7 @@ function scan(target: string, options: ScanOptions) {
 
   if (options.report) {
     const html = renderReport({
-      projectName: path.basename(root),
+      projectName: projectNameFor(root),
       root,
       framework,
       behaviours,

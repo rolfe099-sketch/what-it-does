@@ -11,7 +11,9 @@ dist/
 # Scan history written into fixtures by the test suite
 tests/fixtures/**/.what-it-does/
 
-# Generated reports
+# Generated reports. demo/ is the hosted sample — regenerate with `npm run demo`
+# rather than committing 1.6MB of generated HTML into the source history.
+demo/
 what-it-does-report.html
 eriksen-report.html
 report-*.html

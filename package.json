@@ -6,11 +6,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rolfe099-sketch/forfun.git"
+    "url": "git+https://github.com/rolfe099-sketch/what-it-does.git"
   },
-  "homepage": "https://github.com/rolfe099-sketch/forfun#readme",
+  "homepage": "https://github.com/rolfe099-sketch/what-it-does#readme",
   "bugs": {
-    "url": "https://github.com/rolfe099-sketch/forfun/issues"
+    "url": "https://github.com/rolfe099-sketch/what-it-does/issues"
   },
   "bin": {
     "what-it-does": "dist/cli.js"
@@ -36,6 +36,7 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "check": "tsc --noEmit && tsc -p tsconfig.test.json && npm test",
     "scan": "tsx src/cli.ts scan",
+    "demo": "tsx src/cli.ts fixtures/dub/apps/web --no-open --no-code && node -e \"require('fs').renameSync('what-it-does-report.html','demo/dub.html')\"",
     "prepublishOnly": "npm run check && npm run build"
   },
   "dependencies": {
