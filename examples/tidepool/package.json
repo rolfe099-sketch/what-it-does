@@ -1,0 +1,14 @@
+{
+  "name": "tidepool",
+  "private": true,
+  "version": "0.1.0",
+  "dependencies": {
+    "next": "15.5.0",
+    "react": "19.0.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "stripe": "^17.0.0",
+    "resend": "^4.0.0",
+    "ai": "^4.0.0",
+    "@ai-sdk/openai": "^1.0.0"
+  }
+}

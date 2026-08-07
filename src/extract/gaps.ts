@@ -150,6 +150,20 @@ function unprotectedDestructive(behaviour: Behaviour, context: GapContext): Gap[
     }
   }
 
+  /**
+   * An import we could not follow outranks every other consideration.
+   *
+   * "No visible check" is only worth saying when we could actually see. If a
+   * behaviour imports something we failed to resolve, the guard may be sitting
+   * right there inside it — so the claim softens to `possible` and says which
+   * import blinded us, rather than accusing code we never opened.
+   */
+  const unread = behaviour.unknowns.filter((u) => u.reason === 'unsupported');
+  if (unread.length > 0) {
+    confidence = 'possible';
+    coverage = `We could not follow ${unread.length === 1 ? 'an import' : `${unread.length} imports`} used here, so the check may be inside one of them. ${unread[0].detail}`;
+  }
+
   const preamble =
     kind === 'server-action'
       ? 'Server actions are callable over HTTP directly, not only from your own forms.'
