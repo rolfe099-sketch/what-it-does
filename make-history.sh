@@ -5,7 +5,7 @@
 set -e
 cd "$(dirname "$0")"
 F=tests/fixtures/gapdemo/app/actions.ts
-rm -rf tests/fixtures/gapdemo/.eriksen
+rm -rf tests/fixtures/gapdemo/.what-it-does
 
 scan() { npx tsx src/cli.ts scan tests/fixtures/gapdemo --no-open --no-report > /dev/null 2>&1; }
 

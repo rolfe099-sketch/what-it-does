@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Project Eriksen CLI.
+ * what it does — CLI.
  *
  * Everything runs locally. No network calls, no telemetry, no account. The code
  * being scanned never leaves the machine — that is the product's whole position,
@@ -99,7 +99,7 @@ interface ScanOptions {
  * Where the previous scan is kept, so the next one can say what moved.
  * Inside the scanned project, because the comparison belongs to that project.
  */
-const SNAPSHOT_DIR = '.eriksen';
+const SNAPSHOT_DIR = '.what-it-does';
 const HISTORY_FILE = 'history.json';
 
 function readHistory(root: string): History | null {
@@ -159,7 +159,7 @@ ${BOLD}Nothing to read at this level, but there is one level down.${RESET}`);
       console.error(`  ${ACCENT}${child.dir}${RESET}${DIM}  ${child.framework}${RESET}`);
     }
     console.error(`
-${DIM}Scan one directly:${RESET} eriksen scan ${found[0].dir}`);
+${DIM}Scan one directly:${RESET} what-it-does ${found[0].dir}`);
     return;
   }
 
@@ -334,7 +334,7 @@ function scan(target: string, options: ScanOptions) {
       timeline,
       includeCode: options.includeCode,
     });
-    const out = path.join(process.cwd(), 'eriksen-report.html');
+    const out = path.join(process.cwd(), 'what-it-does-report.html');
     fs.writeFileSync(out, html, 'utf8');
     console.log(`
 ${BOLD}Report${RESET} ${ACCENT}${out}${RESET}`);
@@ -344,21 +344,25 @@ ${BOLD}Report${RESET} ${ACCENT}${out}${RESET}`);
   console.log('');
 }
 
+/**
+ * Scanning is the only thing this does, so it is what happens by default.
+ *
+ * `npx what-it-does` with nothing after it reads the current directory. The
+ * name is long enough to type once; making someone add `scan` to it as well
+ * buys nothing, and a tool with one verb should not make you say the verb.
+ * `scan` still works, because it is what the README said for a while and
+ * breaking a documented command to save four characters is not a trade.
+ */
 const argv = process.argv.slice(2);
-const command = argv[0];
-const target = argv.find((a, i) => i > 0 && !a.startsWith('--'));
+const positional = argv.filter((a) => !a.startsWith('-'));
+const wantsHelp = argv.some((a) => a === '--help' || a === '-h' || a === 'help');
 
-if (command === 'scan') {
-  scan(target ?? process.cwd(), {
-    report: !argv.includes('--no-report'),
-    open: !argv.includes('--no-open'),
-    includeCode: !argv.includes('--no-code'),
-  });
-} else {
+if (wantsHelp) {
   console.log(`
-${BOLD}eriksen${RESET} — shows you what software you didn't write actually does
+${BOLD}what it does${RESET} — shows you what software you didn't write actually does
 
-  ${BOLD}eriksen scan${RESET} [path]    Show what an application can do
+  ${BOLD}npx what-it-does${RESET}            Read the current directory
+  ${BOLD}npx what-it-does${RESET} [path]     Read somewhere else
 
     --no-open     Write the report but do not open it
     --no-report   Terminal output only
@@ -367,4 +371,11 @@ ${BOLD}eriksen${RESET} — shows you what software you didn't write actually doe
 Writes a single self-contained HTML file. No server, no network, no account —
 your code never leaves this machine, and neither does the report.
 `);
+} else {
+  const target = positional[0] === 'scan' ? positional[1] : positional[0];
+  scan(target ?? process.cwd(), {
+    report: !argv.includes('--no-report'),
+    open: !argv.includes('--no-open'),
+    includeCode: !argv.includes('--no-code'),
+  });
 }

@@ -1,11 +1,11 @@
 {
-  "name": "eriksen",
+  "name": "what-it-does",
   "version": "0.1.0",
   "description": "Shows you what software you didn't write actually does, and tells you when that changes. Runs locally; your code never leaves the machine.",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "eriksen": "dist/cli.js"
+    "what-it-does": "dist/cli.js"
   },
   "files": [
     "dist",

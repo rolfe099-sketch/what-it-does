@@ -1,5 +1,5 @@
 /**
- * The core model. Everything in Project Eriksen is built from these types.
+ * The core model. Everything in this tool is built from these types.
  *
  *   A BEHAVIOUR is a TRIGGER, a PATH, and a set of EFFECTS.
  *

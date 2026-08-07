@@ -1,4 +1,4 @@
-# eriksen
+# what it does
 
 **Shows you what software you didn't write actually does — and tells you when that changes.**
 
@@ -7,7 +7,7 @@ And you can no longer say with confidence what happens when someone signs up, or
 what breaks if you rename a table.
 
 ```bash
-npx eriksen scan .
+npx what-it-does
 ```
 
 It reads your code without running it, and opens a single HTML file: everything
@@ -105,14 +105,14 @@ The scan won't fail and it won't warn you loudly, which is worth knowing.
 ## Usage
 
 ```bash
-npx eriksen scan .                 # scan and open the report
-npx eriksen scan ../my-app         # scan somewhere else
-npx eriksen scan . --no-open       # write the report, don't open it
-npx eriksen scan . --no-code       # omit source excerpts
-npx eriksen scan . --no-report     # terminal output only
+npx what-it-does                   # read here, open the report
+npx what-it-does ../my-app         # read somewhere else
+npx what-it-does --no-open         # write the report, don't open it
+npx what-it-does --no-code         # omit source excerpts
+npx what-it-does --no-report       # terminal output only
 ```
 
-Writes `eriksen-report.html` to the current directory.
+Writes `what-it-does-report.html` to the current directory.
 
 ### Sharing a report
 
@@ -122,7 +122,7 @@ anything you intend to send.
 
 ### History
 
-Each scan appends to `.eriksen/history.json` inside the scanned project, capped
+Each scan appends to `.what-it-does/history.json` inside the scanned project, capped
 at 20. That file is what the Timeline reads. Delete it to start over; add it to
 `.gitignore` if you'd rather not commit it.
 

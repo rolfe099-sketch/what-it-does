@@ -1073,7 +1073,7 @@ export function renderReport(data: ReportData): string {
         <path d="M2 2.5h13M2 6.5h13M2 14.5h13M2 17.5h13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".4"/>
         <path d="M7 10.5h13" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round"/>
       </svg>
-      eriksen
+      what it does
     </a>
     <span class="top__spacer"></span>
     <nav class="tabs" aria-label="Views">
@@ -1271,12 +1271,12 @@ ${data.drift ? driftView(data.drift) : ''}
 /* The only script in this document. Everything else is CSS. */
 (function(){
   var r=document.documentElement,b=document.getElementById('tt');
-  try{var t=localStorage.getItem('eriksen-theme');if(t)r.setAttribute('data-theme',t)}catch(e){}
+  try{var t=localStorage.getItem('wid-theme');if(t)r.setAttribute('data-theme',t)}catch(e){}
   b.addEventListener('click',function(){
     var dark=(r.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'))==='dark';
     var next=dark?'light':'dark';
     r.setAttribute('data-theme',next);
-    try{localStorage.setItem('eriksen-theme',next)}catch(e){}
+    try{localStorage.setItem('wid-theme',next)}catch(e){}
   });
   /* Keep the tab highlight honest as the hash changes. */
   function sync(){

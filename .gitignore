@@ -9,9 +9,10 @@ dist/
 /fixtures/
 
 # Scan history written into fixtures by the test suite
-tests/fixtures/**/.eriksen/
+tests/fixtures/**/.what-it-does/
 
 # Generated reports
+what-it-does-report.html
 eriksen-report.html
 report-*.html
 
