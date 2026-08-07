@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "report",
+      "name": "eriksenlabs-site",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "4400"],
-      "port": 4400
+      "runtimeArgs": ["-m", "http.server", "8931", "--directory", "fixtures/eriksenlabs-site"],
+      "port": 8931
     }
   ]
 }
