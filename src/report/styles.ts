@@ -315,13 +315,23 @@ main{padding-block:var(--s8) var(--s10)}
   background:var(--sunk);border-radius:var(--radius);max-width:var(--measure)}
 .flag__mark{color:var(--accent);flex:none;font-family:var(--font-data)}
 
-/* ── views: pure :target switching ──────────────────────────────────── */
+/* ── views: pure :target switching ────────────────────────────────────
+   The map is the default: shown unless some OTHER view is targeted.
+
+   The :not(:target) on the hiding rule is load-bearing, and the bug it fixes
+   shipped. Without it the rule reads body:has(.view:target) #map, whose
+   specificity is (1,2,1) — :has() contributes its most specific argument —
+   which beats #map:target at (1,1,0). So clicking the Map tab set the hash
+   to #map, the hiding rule won, and the reader got a blank document with
+   every view switched off.
+
+   Written this way the rule cannot apply when the map is the target, because
+   the selector no longer matches it. That is a structural fix rather than a
+   bigger number in a specificity race, which is what the first version was. */
 .view{display:none}
 .view:target{display:block}
-/* The map is the default: shown unless some other view is targeted. */
 #map{display:block}
-body:has(.view:target) #map{display:none}
-#map:target{display:block}
+body:has(.view:target) #map:not(:target){display:none}
 
 /* With scripting or :has() unavailable, every view simply stacks and remains
    readable. Nothing is lost, only the switching. */
