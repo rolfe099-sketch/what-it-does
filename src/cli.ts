@@ -7,10 +7,13 @@
  * so it is enforced here rather than promised in marketing copy.
  */
 
+import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { spawn } from 'node:child_process';
 import { detectNextJs, findEntryPoints } from './extract/nextjs/entrypoints.js';
 import { buildBehaviours } from './extract/behaviours.js';
 import { DEFAULT_DEPTH } from './extract/trace.js';
+import { renderReport } from './report/render.js';
 import {
   CONSEQUENTIAL_EFFECTS,
   EFFECT_LABELS,
@@ -77,7 +80,26 @@ function printBehaviour(behaviour: Behaviour, index: number) {
   }
 }
 
-function scan(target: string) {
+interface ScanOptions {
+  /** Write the HTML report. On by default — it is the actual product. */
+  report: boolean;
+  /** Open the report in the default browser once written. */
+  open: boolean;
+}
+
+/** Hand the report to the OS. Best-effort: a failure here is not a scan failure. */
+function openInBrowser(file: string) {
+  const command =
+    process.platform === 'win32' ? 'cmd' : process.platform === 'darwin' ? 'open' : 'xdg-open';
+  const args = process.platform === 'win32' ? ['/c', 'start', '', file] : [file];
+  try {
+    spawn(command, args, { detached: true, stdio: 'ignore' }).unref();
+  } catch {
+    /* The path is printed regardless, so the visitor can open it themselves. */
+  }
+}
+
+function scan(target: string, options: ScanOptions) {
   const root = path.resolve(target);
   console.log(`${DIM}Scanning ${root}${RESET}`);
 
@@ -103,6 +125,25 @@ function scan(target: string) {
 
   const { behaviours } = buildBehaviours(root, triggers, middleware);
   const elapsed = Date.now() - started;
+
+  if (options.report) {
+    const html = renderReport({
+      projectName: path.basename(root),
+      root,
+      framework: `Next.js ${detected.version ?? ''}`.trim(),
+      behaviours,
+      skipped,
+      middleware,
+      elapsedMs: elapsed,
+      scannedAt: new Date(),
+      traceDepth: DEFAULT_DEPTH,
+    });
+    const out = path.join(process.cwd(), 'eriksen-report.html');
+    fs.writeFileSync(out, html, 'utf8');
+    console.log(`
+${BOLD}Report${RESET} ${ACCENT}${out}${RESET}`);
+    if (options.open) openInBrowser(out);
+  }
 
   console.log(`${DIM}Next.js ${detected.version} · app router at ${appDir} · ${elapsed}ms${RESET}`);
 
@@ -196,16 +237,25 @@ function scan(target: string) {
   console.log('');
 }
 
-const [command, target] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const command = argv[0];
+const target = argv.find((a, i) => i > 0 && !a.startsWith('--'));
 
 if (command === 'scan') {
-  scan(target ?? process.cwd());
+  scan(target ?? process.cwd(), {
+    report: !argv.includes('--no-report'),
+    open: !argv.includes('--no-open'),
+  });
 } else {
   console.log(`
 ${BOLD}eriksen${RESET} — shows you what software you didn't write actually does
 
   ${BOLD}eriksen scan${RESET} [path]    Show what an application can do
 
-Everything runs locally. Your code never leaves this machine.
+    --no-open     Write the report but do not open it
+    --no-report   Terminal output only
+
+Writes a single self-contained HTML file. No server, no network, no account —
+your code never leaves this machine, and neither does the report.
 `);
 }
