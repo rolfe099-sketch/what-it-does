@@ -523,6 +523,32 @@ a.wave__item:hover{border-color:var(--accent);color:var(--accent)}
   .tl__track{padding-bottom:var(--s7)}
 }
 
+/* ── fullscreen ─────────────────────────────────────────────────────────
+   The charts are the one thing in the report that genuinely wants the whole
+   screen: a 69-node graph inside a 40rem column is legible but cramped, and
+   reading a constellation is a spatial task. Everything else in the document
+   is prose and belongs at a measured width. */
+.cst:fullscreen,
+.sc:fullscreen{
+  display:flex;flex-direction:column;
+  background:var(--canvas);border:0;border-radius:0;
+  width:100vw;height:100vh;
+}
+.cst:fullscreen .cst__stage,
+.sc:fullscreen .sc__stage{
+  flex:1 1 auto;min-height:0;display:grid;place-items:center;
+}
+.cst:fullscreen .cst__svg,
+.sc:fullscreen .sc__svg{
+  max-height:none;width:100%;height:100%;
+}
+/* Labels are sized in SVG user units, so they shrink as the viewBox grows to
+   fill a large screen. Nudged up so a wall-sized chart stays readable. */
+.cst:fullscreen .cst__label{font-size:11px}
+.sc:fullscreen .sc__label{font-size:11px}
+
+.cst__zoom button[data-full]{width:auto;padding-inline:var(--s3)}
+
 /* ── drift ──────────────────────────────────────────────────────────── */
 .drift{margin-top:var(--s6);display:flex;flex-direction:column;gap:var(--s4);
   max-width:var(--col-main)}

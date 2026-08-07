@@ -684,6 +684,7 @@ function spaceView(graph: ResourceNode[]): string {
             <button type="button" data-zoom="out" aria-label="Zoom out">−</button>
             <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
             <button type="button" data-zoom="reset" aria-label="Reset view">⤺</button>
+            <button type="button" data-full="cst" aria-label="View full screen">Full screen</button>
           </span>
         </div>
       </div>
@@ -730,15 +731,18 @@ function starView(graph: ResourceNode[]): string {
         <div class="sc__stage">
           ${chart.svg}
           <div class="cst__readout" id="sc-readout" aria-hidden="true"></div>
-          <span class="sc__hint">Drag to turn</span>
+          <span class="sc__hint">Drag to turn · scroll to zoom</span>
         </div>
         <div class="cst__bar">
           <span class="cst__key"><span class="cst__swatch cst__swatch--big"></span>something can delete from it</span>
           <span class="cst__key"><span class="cst__swatch"></span>read or written only</span>
           <span class="cst__key"><span class="cst__swatch cst__swatch--svc"></span>outside service</span>
           <span class="cst__zoom">
+            <button type="button" data-turn="out" aria-label="Zoom out">−</button>
+            <button type="button" data-turn="in" aria-label="Zoom in">+</button>
             <button type="button" data-turn="drift" aria-label="Start or stop the slow turn">◐</button>
-            <button type="button" data-turn="reset" aria-label="Reset the angle">⤺</button>
+            <button type="button" data-turn="reset" aria-label="Reset the view">⤺</button>
+            <button type="button" data-full="sc" aria-label="View full screen">Full screen</button>
           </span>
         </div>
       </div>
@@ -1333,32 +1337,45 @@ ${data.drift ? driftView(data.drift) : ''}
   var base=svg.getAttribute('viewBox').split(' ').map(Number);
   var view=base.slice();
   function apply(){ svg.setAttribute('viewBox',view.join(' ')); }
-  function zoom(factor,cx,cy){
+  function zoom2d(factor,cx,cy){
+    if(!isFinite(cx)||!isFinite(cy)) return;
     var nw=Math.min(base[2]*3,Math.max(base[2]*0.15,view[2]*factor));
     var nh=nw*(base[3]/base[2]);
-    view[0]=cx-(cx-view[0])*(nw/view[2]);
-    view[1]=cy-(cy-view[1])*(nh/view[3]);
-    view[2]=nw; view[3]=nh; apply();
+    var nx=cx-(cx-view[0])*(nw/view[2]);
+    var ny=cy-(cy-view[1])*(nh/view[3]);
+    if(!isFinite(nx)||!isFinite(ny)||!isFinite(nw)||!isFinite(nh)) return;
+    view[0]=nx; view[1]=ny; view[2]=nw; view[3]=nh; apply();
   }
+  /* A zero-sized element divides by zero and puts NaN in the viewBox, which is
+     unrecoverable: the chart blanks and never comes back. That happens whenever
+     the element is not laid out — hidden, collapsed, printing. Returning null
+     and bailing is two lines and removes the whole class of failure. */
   function toSvg(ev){
     var r=svg.getBoundingClientRect();
+    if(!r.width||!r.height) return null;
     return [view[0]+((ev.clientX-r.left)/r.width)*view[2],
             view[1]+((ev.clientY-r.top)/r.height)*view[3]];
   }
   svg.addEventListener('wheel',function(ev){
     ev.preventDefault(); var p=toSvg(ev);
-    zoom(ev.deltaY>0?1.12:0.89,p[0],p[1]);
+    if(!p) return;
+    zoom2d(ev.deltaY>0?1.12:0.89,p[0],p[1]);
   },{passive:false});
 
   var dragging=false,last=null;
   svg.addEventListener('pointerdown',function(ev){
     if(ev.target.closest('.cst__node')) return;   /* let clicks through to links */
     dragging=true; last=[ev.clientX,ev.clientY];
-    svg.classList.add('is-panning'); svg.setPointerCapture(ev.pointerId);
+    svg.classList.add('is-panning');
+    /* Capture can throw if the pointer has already been released. It is a
+       convenience, not a requirement — dragging still works without it — so it
+       must never abort the rest of this handler. */
+    try{ svg.setPointerCapture(ev.pointerId); }catch(e){}
   });
   svg.addEventListener('pointermove',function(ev){
     if(!dragging) return;
     var r=svg.getBoundingClientRect();
+    if(!r.width||!r.height) return;
     view[0]-=((ev.clientX-last[0])/r.width)*view[2];
     view[1]-=((ev.clientY-last[1])/r.height)*view[3];
     last=[ev.clientX,ev.clientY]; apply();
@@ -1371,7 +1388,7 @@ ${data.drift ? driftView(data.drift) : ''}
     b.addEventListener('click',function(){
       var mode=b.dataset.zoom;
       if(mode==='reset'){ view=base.slice(); apply(); return; }
-      zoom(mode==='in'?0.8:1.25,view[0]+view[2]/2,view[1]+view[3]/2);
+      zoom2d(mode==='in'?0.8:1.25,view[0]+view[2]/2,view[1]+view[3]/2);
     });
   });
 
@@ -1391,6 +1408,12 @@ ${data.drift ? driftView(data.drift) : ''}
   var dist=parseFloat(scSvg.dataset.distance);
   var yaw0=parseFloat(scSvg.dataset.yaw), pitch0=parseFloat(scSvg.dataset.pitch);
   var fit=parseFloat(scSvg.dataset.fit)||1;
+  /* Zoom SCALES the projection rather than moving the camera. Dollying in
+     changes how strong the perspective is as you go, and far enough in it puts
+     the camera inside the model and everything inverts. Scaling cannot do
+     either — the shape you are looking at stays the shape you were looking at. */
+  var zoom=1;
+  var ZOOM_MIN=0.4, ZOOM_MAX=6;
   var yaw=yaw0, pitch=pitch0, CENTRE=500;
 
   var pts=scNodes.map(function(n){
@@ -1409,13 +1432,14 @@ ${data.drift ? driftView(data.drift) : ''}
     var y1=p.y*cp - z1*sp;
     var z2=p.y*sp + z1*cp;
     var scale=dist/(dist+z2);
-    return { x:CENTRE + x1*scale*fit, y:CENTRE + y1*scale*fit, scale:scale, depth:z2 };
+    var k=scale*fit*zoom;
+    return { x:CENTRE + x1*k, y:CENTRE + y1*k, scale:scale, depth:z2 };
   }
 
   function draw(){
     pts.forEach(function(p){
       var q=project(p); p.proj=q;
-      var r=p.r*q.scale*fit;
+      var r=p.r*q.scale*fit*zoom;
       var op=Math.max(0.32,Math.min(1,q.scale*0.95));
       p.dot.setAttribute('cx',q.x.toFixed(1)); p.dot.setAttribute('cy',q.y.toFixed(1));
       p.dot.setAttribute('r',r.toFixed(1)); p.dot.setAttribute('opacity',op.toFixed(2));
@@ -1447,7 +1471,8 @@ ${data.drift ? driftView(data.drift) : ''}
     if(ev.target.closest('.sc__node')) return;
     turning=true; from=[ev.clientX,ev.clientY]; drift=false;
     sc.classList.add('is-touched');
-    scSvg.classList.add('is-turning'); scSvg.setPointerCapture(ev.pointerId);
+    scSvg.classList.add('is-turning');
+    try{ scSvg.setPointerCapture(ev.pointerId); }catch(e){}
   });
   scSvg.addEventListener('pointermove',function(ev){
     if(!turning) return;
@@ -1469,10 +1494,70 @@ ${data.drift ? driftView(data.drift) : ''}
     requestAnimationFrame(loop);
   })();
 
+  function setZoom(next){
+    if(!isFinite(next)) return;
+    zoom=Math.min(ZOOM_MAX,Math.max(ZOOM_MIN,next));
+    sc.classList.add('is-touched'); schedule();
+  }
+  scSvg.addEventListener('wheel',function(ev){
+    ev.preventDefault(); setZoom(zoom*(ev.deltaY>0?0.9:1.11));
+  },{passive:false});
+
   sc.querySelectorAll('[data-turn]').forEach(function(b){
     b.addEventListener('click',function(){
-      if(b.dataset.turn==='reset'){ yaw=yaw0; pitch=pitch0; schedule(); return; }
+      var mode=b.dataset.turn;
+      if(mode==='reset'){ yaw=yaw0; pitch=pitch0; zoom=1; schedule(); return; }
+      if(mode==='in'){ setZoom(zoom*1.3); return; }
+      if(mode==='out'){ setZoom(zoom/1.3); return; }
       drift=!drift; sc.classList.add('is-touched');
+    });
+  });
+
+  /* Pinch. Without it the charts are unusable full screen on a tablet, which is
+     the one place a full-screen chart is most worth having. */
+  function pinch(el, onScale){
+    var points=new Map(), start=0;
+    var spread=function(){
+      var p=[...points.values()];
+      return Math.hypot(p[0].x-p[1].x, p[0].y-p[1].y);
+    };
+    el.addEventListener('pointerdown',function(ev){
+      points.set(ev.pointerId,{x:ev.clientX,y:ev.clientY});
+      if(points.size===2) start=spread();
+    });
+    el.addEventListener('pointermove',function(ev){
+      if(!points.has(ev.pointerId)) return;
+      points.set(ev.pointerId,{x:ev.clientX,y:ev.clientY});
+      if(points.size!==2||!start) return;
+      ev.preventDefault();
+      var now=spread();
+      if(now>0){ onScale(now/start); start=now; }
+    });
+    var drop=function(ev){ points.delete(ev.pointerId); start=0; };
+    el.addEventListener('pointerup',drop);
+    el.addEventListener('pointercancel',drop);
+  }
+  pinch(scSvg,function(factor){ setZoom(zoom*factor); });
+  pinch(svg,function(factor){
+    zoom2d(factor>1?0.92:1.08, view[0]+view[2]/2, view[1]+view[3]/2);
+  });
+
+  /* ── full screen ──────────────────────────────────────────────────────
+     The charts are the one part of this document that wants the whole screen.
+     Everything else is prose and belongs at a measured width. */
+  document.querySelectorAll('[data-full]').forEach(function(b){
+    var target=document.getElementById(b.dataset.full);
+    if(!target||!target.requestFullscreen){ b.style.display='none'; return; }
+    b.addEventListener('click',function(){
+      if(document.fullscreenElement===target) document.exitFullscreen();
+      else target.requestFullscreen().catch(function(){ b.style.display='none'; });
+    });
+  });
+  document.addEventListener('fullscreenchange',function(){
+    document.querySelectorAll('[data-full]').forEach(function(b){
+      var on=document.fullscreenElement===document.getElementById(b.dataset.full);
+      b.textContent=on?'Exit full screen':'Full screen';
+      b.setAttribute('aria-label',on?'Exit full screen':'View full screen');
     });
   });
 
