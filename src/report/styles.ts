@@ -699,8 +699,6 @@ a.wave__item:hover{border-color:var(--accent);color:var(--accent)}
   padding-block:var(--s6) var(--s8);font-size:var(--t-meta);color:var(--ink-muted)}
 .foot strong{color:var(--ink);font-weight:600}
 .foot p+p{margin-top:var(--s3)}
-.foot__path{font-family:var(--font-data);font-size:var(--t-small);color:var(--ink-faint);
-  word-break:break-all}
 
 /* ── responsive ─────────────────────────────────────────────────────── */
 @media (max-width:48rem){

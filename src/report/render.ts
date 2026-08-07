@@ -1358,7 +1358,7 @@ ${data.drift ? driftView(data.drift) : ''}
         ? `${data.skipped.length} ${plural(data.skipped.length, 'file was', 'files were')} unreadable to us — a limitation on our side, not a problem with your code.`
         : 'Every file we found was readable.'
     }</p>
-    <p class="foot__path">${escape(data.root)}</p>
+
   </div>
 </footer>
 
