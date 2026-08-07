@@ -9,7 +9,7 @@
  */
 
 import ts from 'typescript';
-import type { Effect, SourceRef, Unknown } from '../model.js';
+import type { Effect, Resource, SourceRef, Unknown } from '../model.js';
 import { AUTH_CHECK_NAME_PATTERNS, EFFECT_PATTERNS, type EffectPattern } from './patterns.js';
 
 // ---------------------------------------------------------------------------
@@ -121,25 +121,56 @@ function describeArgument(arg: ts.Expression | undefined): string {
 }
 
 /**
+ * The raw resource name behind an argument, kept separate from the prose.
+ * `literal:false` means the code passed a variable, so the graph knows the edge
+ * is real but the target uncertain — and can say so rather than guessing.
+ */
+function rawName(arg: ts.Expression | undefined): { name: string; literal: boolean } | null {
+  if (!arg) return null;
+  if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg))
+    return { name: arg.text, literal: true };
+  if (ts.isIdentifier(arg)) return { name: arg.text, literal: false };
+  return null;
+}
+
+/**
  * The first matching pattern wins. The table is ordered by consequence, so
  * `.from(t).delete().select()` is reported as a deletion rather than a read —
  * which is the order a founder needs to hear it in.
  */
-function matchPattern(detected: CallChain): { pattern: EffectPattern; description: string } | null {
+function matchPattern(
+  detected: CallChain,
+): { pattern: EffectPattern; description: string; resource?: Resource } | null {
   for (const pattern of EFFECT_PATTERNS) {
     const at = indexOfRun(detected.chain, pattern.chain);
     if (at === -1) continue;
     if (pattern.root && !(detected.root && pattern.root.test(detected.root))) continue;
 
     let description = pattern.describe;
+    let resource: Resource | undefined;
+
     if (pattern.labelArgFrom !== undefined) {
-      description = description.replace('{arg}', describeArgument(detected.args[at + pattern.labelArgFrom]));
+      const arg = detected.args[at + pattern.labelArgFrom];
+      description = description.replace('{arg}', describeArgument(arg));
+      const raw = rawName(arg);
+      if (raw && pattern.resourceKind) {
+        resource = { kind: pattern.resourceKind, name: raw.name, literal: raw.literal };
+      }
     } else if (pattern.labelFromPreviousLink) {
       // prisma.passwordResetToken.findFirst() — the model is the link before.
       const model = at > 0 ? detected.chain[at - 1] : undefined;
       description = description.replace('{arg}', model ? `\`${model}\`` : 'a table we could not name');
+      if (model && pattern.resourceKind) {
+        resource = { kind: pattern.resourceKind, name: model, literal: true };
+      }
     }
-    return { pattern, description };
+
+    // Calls that always target the same place, e.g. every Stripe API.
+    if (!resource && pattern.resourceKind && pattern.resourceName) {
+      resource = { kind: pattern.resourceKind, name: pattern.resourceName, literal: true };
+    }
+
+    return { pattern, description, resource };
   }
 
   // Fall back to the naming convention for guards. Only ever produces an auth
@@ -269,6 +300,7 @@ export function detectEffects(
             source: refAt(node),
             confidence: matched.pattern.confidence,
             isAuthCheck: matched.pattern.authCheck,
+            resource: matched.resource,
           });
         }
       }

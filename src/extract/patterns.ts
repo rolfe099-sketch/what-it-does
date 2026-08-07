@@ -11,7 +11,7 @@
  * the same thing, and real codebases name that client whatever they like.
  */
 
-import type { EffectKind } from '../model.js';
+import type { EffectKind, ResourceKind } from '../model.js';
 
 export interface EffectPattern {
   /**
@@ -36,6 +36,14 @@ export interface EffectPattern {
    * "Reads the first matching record" and the model name is lost.
    */
   labelFromPreviousLink?: boolean;
+  /**
+   * What sort of thing this effect acts on. Combined with labelArgFrom or
+   * labelFromPreviousLink, this is what turns "Deletes rows from `users`" into
+   * a graph edge pointing at the `users` table.
+   */
+  resourceKind?: ResourceKind;
+  /** A fixed resource name, for calls that always target the same service. */
+  resourceName?: string;
   /** `{arg}` is replaced by the captured argument, or dropped if absent. */
   describe: string;
   confidence: 'certain' | 'likely';
@@ -57,42 +65,56 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
   {
     chain: ['checkout', 'sessions', 'create'],
     kind: 'takes-payment',
+    resourceKind: 'service',
+    resourceName: 'Stripe',
     describe: 'Starts a Stripe checkout — this is where money is taken',
     confidence: 'certain',
   },
   {
     chain: ['paymentIntents', 'create'],
     kind: 'takes-payment',
+    resourceKind: 'service',
+    resourceName: 'Stripe',
     describe: 'Creates a Stripe payment',
     confidence: 'certain',
   },
   {
     chain: ['subscriptions', 'create'],
     kind: 'takes-payment',
+    resourceKind: 'service',
+    resourceName: 'Stripe',
     describe: 'Starts a recurring subscription charge',
     confidence: 'certain',
   },
   {
     chain: ['subscriptions', 'update'],
     kind: 'takes-payment',
+    resourceKind: 'service',
+    resourceName: 'Stripe',
     describe: 'Changes an existing subscription — may change what a customer is billed',
     confidence: 'certain',
   },
   {
     chain: ['subscriptions', 'cancel'],
     kind: 'takes-payment',
+    resourceKind: 'service',
+    resourceName: 'Stripe',
     describe: 'Cancels a subscription',
     confidence: 'certain',
   },
   {
     chain: ['billingPortal', 'sessions', 'create'],
     kind: 'takes-payment',
+    resourceKind: 'service',
+    resourceName: 'Stripe',
     describe: 'Opens the Stripe billing portal, where a customer can change what they pay',
     confidence: 'certain',
   },
   {
     chain: ['refunds', 'create'],
     kind: 'takes-payment',
+    resourceKind: 'service',
+    resourceName: 'Stripe',
     describe: 'Issues a refund',
     confidence: 'certain',
   },
@@ -102,6 +124,7 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     chain: ['from', 'delete'],
     kind: 'deletes-data',
     labelArgFrom: 0,
+    resourceKind: 'table',
     describe: 'Deletes rows from {arg}',
     confidence: 'certain',
   },
@@ -115,6 +138,7 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     chain: ['storage', 'from', 'remove'],
     kind: 'deletes-data',
     labelArgFrom: 1,
+    resourceKind: 'bucket',
     describe: 'Deletes stored files from {arg}',
     confidence: 'certain',
   },
@@ -122,6 +146,7 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     chain: ['deleteMany'],
     kind: 'deletes-data',
     labelFromPreviousLink: true,
+    resourceKind: 'table',
     describe: 'Deletes multiple rows from {arg}',
     confidence: 'certain',
   },
@@ -242,24 +267,32 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
   {
     chain: ['emails', 'send'],
     kind: 'sends-email',
+    resourceKind: 'service',
+    resourceName: 'email',
     describe: 'Sends an email',
     confidence: 'certain',
   },
   {
     chain: ['sendMail'],
     kind: 'sends-email',
+    resourceKind: 'service',
+    resourceName: 'email',
     describe: 'Sends an email',
     confidence: 'certain',
   },
   {
     chain: ['sendEmail'],
     kind: 'sends-email',
+    resourceKind: 'service',
+    resourceName: 'email',
     describe: 'Sends an email',
     confidence: 'likely',
   },
   {
     chain: ['sendBatchEmail'],
     kind: 'sends-email',
+    resourceKind: 'service',
+    resourceName: 'email',
     describe: 'Sends several emails at once',
     confidence: 'likely',
   },
@@ -269,6 +302,7 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     chain: ['from', 'insert'],
     kind: 'writes-data',
     labelArgFrom: 0,
+    resourceKind: 'table',
     describe: 'Adds rows to {arg}',
     confidence: 'certain',
   },
@@ -276,6 +310,7 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     chain: ['from', 'update'],
     kind: 'writes-data',
     labelArgFrom: 0,
+    resourceKind: 'table',
     describe: 'Changes rows in {arg}',
     confidence: 'certain',
   },
@@ -283,6 +318,7 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     chain: ['from', 'upsert'],
     kind: 'writes-data',
     labelArgFrom: 0,
+    resourceKind: 'table',
     describe: 'Adds or changes rows in {arg}',
     confidence: 'certain',
   },
@@ -290,6 +326,7 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     chain: ['storage', 'from', 'upload'],
     kind: 'writes-file',
     labelArgFrom: 1,
+    resourceKind: 'bucket',
     describe: 'Uploads a file to {arg}',
     confidence: 'certain',
   },
@@ -298,6 +335,7 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     chain: ['insert', 'values'],
     kind: 'writes-data',
     labelArgFrom: 0,
+    resourceKind: 'table',
     describe: 'Adds rows to {arg}',
     confidence: 'certain',
   },
@@ -306,6 +344,7 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     chain: ['update', 'set'],
     kind: 'writes-data',
     labelArgFrom: 0,
+    resourceKind: 'table',
     describe: 'Changes rows in {arg}',
     confidence: 'certain',
   },
@@ -313,6 +352,7 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     chain: ['createMany'],
     kind: 'writes-data',
     labelFromPreviousLink: true,
+    resourceKind: 'table',
     describe: 'Adds multiple rows to {arg}',
     confidence: 'certain',
   },
@@ -320,6 +360,7 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     chain: ['updateMany'],
     kind: 'writes-data',
     labelFromPreviousLink: true,
+    resourceKind: 'table',
     describe: 'Changes multiple rows in {arg}',
     confidence: 'certain',
   },
@@ -365,6 +406,7 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     chain: ['from', 'select'],
     kind: 'reads-data',
     labelArgFrom: 0,
+    resourceKind: 'table',
     describe: 'Reads rows from {arg}',
     confidence: 'certain',
   },
@@ -446,6 +488,7 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     chain: ['findMany'],
     kind: 'reads-data',
     labelFromPreviousLink: true,
+    resourceKind: 'table',
     describe: 'Reads rows from {arg}',
     confidence: 'certain',
   },
@@ -453,6 +496,7 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     chain: ['findUnique'],
     kind: 'reads-data',
     labelFromPreviousLink: true,
+    resourceKind: 'table',
     describe: 'Reads one row from {arg}',
     confidence: 'certain',
   },
@@ -460,6 +504,7 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
     chain: ['findFirst'],
     kind: 'reads-data',
     labelFromPreviousLink: true,
+    resourceKind: 'table',
     describe: 'Reads the first matching row from {arg}',
     confidence: 'certain',
   },
@@ -468,6 +513,8 @@ export const EFFECT_PATTERNS: EffectPattern[] = [
   {
     chain: ['customers', 'create'],
     kind: 'calls-external',
+    resourceKind: 'service',
+    resourceName: 'Stripe',
     describe: 'Creates a customer record at Stripe',
     confidence: 'certain',
   },

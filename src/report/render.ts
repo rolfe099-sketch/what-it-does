@@ -40,6 +40,13 @@ import { fontFaces } from './assets.js';
 import { TOKENS } from './tokens.js';
 import { REPORT_CSS } from './styles.js';
 import { SourceReader, dedent } from './source.js';
+import {
+  buildResourceGraph,
+  impactOf,
+  neighboursOf,
+  resourcesOf,
+  type ResourceNode,
+} from '../extract/graph.js';
 import type { DriftResult } from './drift.js';
 
 export interface ReportData {
@@ -86,6 +93,9 @@ const KIND_LABEL: Record<string, string> = {
 
 const isBig = (kind: EffectKind) => CONSEQUENTIAL_EFFECTS.has(kind);
 const tone = (kind: EffectKind) => (isBig(kind) ? 'var(--accent)' : 'var(--ink-faint)');
+
+/** Stable, DOM-safe id for a resource view. */
+const resSlug = (key: string) => 'res-' + key.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
 
 /** Stable, DOM-safe id for a behaviour. */
 const slug = (id: string) => 'wt-' + id.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
@@ -285,6 +295,87 @@ function groupList(groups: Group[], linkable: Set<string>): string {
     .join('')}</div>`;
 }
 
+function resourceList(graph: ResourceNode[]): string {
+  if (graph.length === 0) return '';
+  const max = Math.max(...graph.map((n) => n.touches.length));
+
+  return `<div class="res-list">${graph
+    .map((node) => {
+      const width = Math.max(3, Math.round((node.touches.length / max) * 100));
+      const n = node.touches.length;
+      return `<a class="res" href="#${resSlug(node.key)}">
+      <div class="res__top">
+        <span class="res__name">${escape(node.resource.name)}</span>
+        <span class="res__kind">${escape(node.resource.kind)}</span>
+      </div>
+      <div class="res__bar"><div class="res__fill" style="width:${width}%"></div></div>
+      <div class="res__meta">
+        <span><b>${n}</b> ${plural(n, 'behaviour', 'behaviours')}</span>
+        ${node.reads > 0 ? `<span><b>${node.reads}</b> read</span>` : ''}
+        ${node.writes > 0 ? `<span><b>${node.writes}</b> write</span>` : ''}
+        ${node.deletes > 0 ? `<span><b>${node.deletes}</b> delete</span>` : ''}
+        ${node.uncertain ? '<span class="res__uncertain">named at runtime</span>' : ''}
+      </div>
+    </a>`;
+    })
+    .join('')}</div>`;
+}
+
+/** One view per resource: what breaks if you change it, and everything that touches it. */
+function impactView(node: ResourceNode, linkable: Set<string>): string {
+  const impact = impactOf(node);
+
+  return `<section class="view" id="${resSlug(node.key)}" aria-label="Impact: ${escape(node.resource.name)}">
+    <div class="wrap">
+      <a class="back" href="#map">← All behaviours</a>
+
+      <div class="col" style="margin-top:var(--s5)">
+        <p class="eyebrow">${escape(node.resource.kind)}</p>
+        <h2 class="h1" style="margin-top:var(--s3);font-family:var(--font-data)">${escape(node.resource.name)}</h2>
+      </div>
+
+      <div class="impact">
+        <div class="section__head"><h3 class="h2">What breaks if you change it</h3></div>
+        <div class="impact__list" style="margin-top:var(--s5)">
+          ${impact.consequences
+            .map((c, i) => {
+              const severe = /delete|gone for everything|cannot undo/i.test(c);
+              const unsure = /may be longer|chosen at runtime/i.test(c);
+              const cls = unsure ? ' consequence--unsure' : severe ? ' consequence--severe' : '';
+              const mark = unsure ? '?' : severe ? '!' : i === 0 ? '→' : '·';
+              return `<p class="consequence${cls}">
+              <span class="consequence__mark" aria-hidden="true">${mark}</span>
+              <span>${withCode(c)}</span>
+            </p>`;
+            })
+            .join('')}
+        </div>
+
+        <div class="touches">
+          <div class="section__head">
+            <h3 class="h2">Everything that reaches it</h3>
+            <span class="section__index">${node.touches.length}</span>
+          </div>
+          ${node.touches
+            .map(({ behaviour, effects }) => {
+              const body = `<span class="touch__title">${escape(behaviour.title)}</span>
+              <span class="touch__how">${effects
+                .map(
+                  (e) =>
+                    `<span>${pip(e.kind)}${withCode(e.description)}</span>`,
+                )
+                .join('')}</span>`;
+              return linkable.has(behaviour.id)
+                ? `<a class="touch" href="#${slug(behaviour.id)}">${body}</a>`
+                : `<div class="touch">${body}</div>`;
+            })
+            .join('')}
+        </div>
+      </div>
+    </div>
+  </section>`;
+}
+
 // ---------------------------------------------------------------------------
 // Walkthrough
 // ---------------------------------------------------------------------------
@@ -327,7 +418,9 @@ function codeBlock(reader: SourceReader, file: string, line: number): string {
   </div>`;
 }
 
-function walkthrough(b: Behaviour, reader: SourceReader | null): string {
+function walkthrough(b: Behaviour, reader: SourceReader | null, graph: ResourceNode[]): string {
+  const deps = resourcesOf(b);
+  const neighbours = neighboursOf(b, graph);
   const steps = sequence(b);
   const configs = b.unknowns.filter((u) => u.reason === 'config-dependent');
 
@@ -389,6 +482,59 @@ function walkthrough(b: Behaviour, reader: SourceReader | null): string {
                   .join('')}
               </ol>
             </div>`
+      }
+
+      ${
+        deps.length > 0
+          ? `<div class="section">
+              <div class="section__head">
+                <h3 class="h2">What it depends on</h3>
+                <span class="section__index">${deps.length}</span>
+              </div>
+              <div class="res-list" style="margin-top:var(--s5)">
+                ${deps
+                  .map((r) => {
+                    const node = graph.find((n) => n.resource.name === r.name && n.resource.kind === r.kind);
+                    const others = node ? node.touches.length - 1 : 0;
+                    return `<a class="res" href="#${resSlug(`${r.kind}:${r.name.toLowerCase()}`)}">
+                    <div class="res__top">
+                      <span class="res__name">${escape(r.name)}</span>
+                      <span class="res__kind">${escape(r.kind)}</span>
+                    </div>
+                    <div class="res__meta"><span>${
+                      others > 0
+                        ? `<b>${others}</b> other ${plural(others, 'behaviour', 'behaviours')} also reach this`
+                        : 'Nothing else reaches this'
+                    }</span></div>
+                  </a>`;
+                  })
+                  .join('')}
+              </div>
+            </div>`
+          : ''
+      }
+
+      ${
+        neighbours.length > 0
+          ? `<div class="section">
+              <div class="section__head">
+                <h3 class="h2">Change this and these may notice</h3>
+                <span class="section__index">${neighbours.length} sharing data</span>
+              </div>
+              <div class="caveat">
+                <span class="caveat__label">Why these are listed</span>
+                Each of these reaches at least one of the same tables or services.
+                They are not necessarily broken by a change here — they are where
+                you would look first if something went wrong after one.
+              </div>
+              <div class="touches">
+                ${neighbours
+                  .slice(0, 12)
+                  .map((n) => `<div class="touch"><span class="touch__title">${escape(n.title)}</span></div>`)
+                  .join('')}
+              </div>
+            </div>`
+          : ''
       }
 
       ${
@@ -488,6 +634,7 @@ export function renderReport(data: ReportData): string {
 
   const reader = data.includeCode ? new SourceReader(data.root) : null;
   const groups = grouped(behaviours);
+  const graph = buildResourceGraph(behaviours);
 
   const gapCount = behaviours.reduce((n, b) => n + b.gaps.length, 0);
   const configCount = behaviours.reduce(
@@ -605,6 +752,28 @@ export function renderReport(data: ReportData): string {
       </div>
     </section>
 
+    <!-- what it depends on -->
+    ${
+      graph.length > 0
+        ? `<section class="section">
+            <div class="section__head">
+              <h2 class="h2">What it depends on</h2>
+              <span class="section__index">${graph.length} ${plural(graph.length, 'thing', 'things')} · widest reach first</span>
+            </div>
+            <p class="lead" style="margin-top:var(--s4)">Every table and outside service
+            this application touches, and how much of it would notice if one changed.</p>
+            ${resourceList(graph)}
+            <div class="caveat">
+              <span class="caveat__label">This is the question behind "I'm afraid to touch it"</span>
+              Open any of these to see exactly what breaks if you rename it, change
+              its shape, or lose it. The list is complete for names written literally
+              in the code — anything reached through a name chosen at runtime is
+              marked, because we cannot follow it.
+            </div>
+          </section>`
+        : ''
+    }
+
     <!-- findings -->
     <section class="section">
       <div class="section__head">
@@ -647,8 +816,11 @@ export function renderReport(data: ReportData): string {
 <!-- ══ WALKTHROUGHS ═════════════════════════════════════════════════════ -->
 ${ranked
   .filter((b) => linkable.has(b.id))
-  .map((b) => walkthrough(b, reader))
+  .map((b) => walkthrough(b, reader, graph))
   .join('')}
+
+<!-- ══ IMPACT ═══════════════════════════════════════════════════════════ -->
+${graph.map((node) => impactView(node, linkable)).join('')}
 
 <!-- ══ DRIFT ════════════════════════════════════════════════════════════ -->
 ${data.drift ? driftView(data.drift) : ''}

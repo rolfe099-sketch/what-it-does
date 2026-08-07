@@ -64,10 +64,38 @@ export const EFFECT_LABELS: Record<EffectKind, string> = {
   'writes-file': 'Writes a file',
 };
 
+/**
+ * The thing an effect acts ON — a database table, a storage bucket, an outside
+ * service.
+ *
+ * Captured as structured data at match time rather than parsed back out of the
+ * description. The description is prose written for a human; the graph needs a
+ * key. Deriving one from the other would mean the day someone rewords a label,
+ * every edge in the graph silently moves.
+ *
+ * This is what makes "what breaks if I change the `users` table?" answerable,
+ * and it is the hardest question to get a trustworthy answer to from a model —
+ * it needs a complete graph, not a plausible one.
+ */
+export type ResourceKind = 'table' | 'bucket' | 'service' | 'file' | 'account';
+
+export interface Resource {
+  kind: ResourceKind;
+  /** As written in the code: "users", "avatars", "Stripe". */
+  name: string;
+  /** False when the name was a variable, so the graph can say it is unsure. */
+  literal: boolean;
+}
+
+/** Stable key for graph lookups. */
+export const resourceKey = (r: Resource): string => `${r.kind}:${r.name.toLowerCase()}`;
+
 export interface Effect {
   kind: EffectKind;
   /** Specific and human: "Deletes rows from `projects`", not "DELETE detected". */
   description: string;
+  /** What it acts on, when we could identify it. */
+  resource?: Resource;
   source: SourceRef;
   /**
    * 'certain'  — the call is unambiguous (`supabase.from('x').delete()`)

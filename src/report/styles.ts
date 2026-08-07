@@ -273,6 +273,53 @@ body:has(.view:target) #map{display:none}
 .code .ln{color:var(--ink-muted);user-select:none;padding-right:var(--s3)}
 .code .hit{background:var(--accent-wash);display:inline-block;width:100%}
 
+/* ── resources: what the app depends on ─────────────────────────────────
+   Each row carries a blast-radius bar. The bar is comparative, not decorative:
+   the table half your application reaches is the one you need to see before
+   you touch it. */
+.res{display:block;text-decoration:none;color:inherit;padding:var(--s4);
+  border-bottom:var(--hair) solid var(--rule);
+  transition:background var(--t-fast) var(--ease)}
+.res:first-child{border-top:var(--hair) solid var(--rule)}
+.res:hover{background:var(--surface)}
+.res__top{display:flex;align-items:baseline;gap:var(--s3);justify-content:space-between}
+.res__name{font-family:var(--font-data);font-size:var(--t-body);font-weight:500;color:var(--ink)}
+.res:hover .res__name{color:var(--accent)}
+.res__kind{font-family:var(--font-data);font-size:var(--t-micro);
+  letter-spacing:var(--track-wide);text-transform:uppercase;color:var(--ink-faint);flex:none}
+.res__bar{height:6px;background:var(--sunk);border-radius:2px;margin-top:var(--s3);overflow:hidden}
+.res__fill{height:100%;background:var(--accent);border-radius:0 2px 2px 0;
+  transform-origin:left center;animation:draw var(--t-draw) var(--ease)}
+.res__meta{display:flex;gap:var(--s4);margin-top:var(--s2);font-family:var(--font-data);
+  font-size:var(--t-small);color:var(--ink-muted);flex-wrap:wrap}
+.res__meta b{font-weight:500;color:var(--ink)}
+.res__uncertain{color:var(--ink-faint)}
+
+/* ── impact: what breaks if you change it ───────────────────────────── */
+.impact{margin-top:var(--s6);max-width:var(--col-main)}
+.impact__list{display:flex;flex-direction:column;gap:var(--s3)}
+.consequence{display:flex;gap:var(--s3);align-items:flex-start;
+  background:var(--surface);border:var(--hair) solid var(--rule);
+  border-left:3px solid var(--accent);border-radius:0 var(--radius) var(--radius) 0;
+  padding:var(--s4);font-size:var(--t-meta)}
+.consequence:first-child{font-size:var(--t-lead);line-height:var(--lh-snug)}
+.consequence--severe{border-left-color:var(--alert)}
+.consequence--unsure{border-left-color:var(--rule-strong);color:var(--ink-muted)}
+.consequence__mark{font-family:var(--font-data);color:var(--accent);flex:none}
+.consequence--severe .consequence__mark{color:var(--alert)}
+.consequence--unsure .consequence__mark{color:var(--ink-faint)}
+
+.touches{margin-top:var(--s5)}
+.touch{padding:var(--s4);border-top:var(--hair) solid var(--rule);display:block;
+  text-decoration:none;color:inherit}
+.touch:hover{background:var(--surface)}
+.touch__title{font-family:var(--font-display);font-size:var(--t-h3);font-weight:500;
+  line-height:var(--lh-snug);color:var(--ink)}
+.touch:hover .touch__title{color:var(--accent)}
+.touch__how{margin-top:var(--s2);display:flex;flex-direction:column;gap:var(--s1);
+  font-size:var(--t-meta);color:var(--ink-muted)}
+.touch__how span{display:flex;gap:var(--s3);align-items:flex-start}
+
 /* ── drift ──────────────────────────────────────────────────────────── */
 .drift{margin-top:var(--s6);display:flex;flex-direction:column;gap:var(--s4);
   max-width:var(--col-main)}
