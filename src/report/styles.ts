@@ -90,18 +90,6 @@ code{font-family:var(--font-data);font-size:.9em;
 
 main{padding-block:var(--s8) var(--s10)}
 
-/* ── the first screen sits on a blueprint grid ───────────────────────────
-   A technical drawing look for the technical drawing this is. It fades out
-   before the first section, so the working area of the page stays plain. */
-#map{position:relative}
-#map::before{content:"";position:absolute;inset:0 0 auto 0;height:38rem;z-index:-1;
-  background:
-    linear-gradient(var(--rule) var(--hair),transparent var(--hair)) 0 0/100% var(--grid-cell),
-    linear-gradient(90deg,var(--rule) var(--hair),transparent var(--hair)) 0 0/var(--grid-cell) 100%;
-  -webkit-mask-image:linear-gradient(to bottom,black,transparent 88%);
-  mask-image:linear-gradient(to bottom,black,transparent 88%);
-  pointer-events:none}
-
 /* ── reading progress, drawn along the header's bottom rule ──────────────
    Scroll-driven, so it costs nothing and cannot drift. Browsers without
    scroll timelines simply keep the plain hairline. */
