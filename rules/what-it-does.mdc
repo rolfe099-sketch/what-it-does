@@ -6,22 +6,20 @@ alwaysApply: false
 
 # Checking what you changed with what-it-does
 
-`what-it-does` reads an application without running it and reports every way
-into it — pages, endpoints, form actions — and what each one really does: which
-tables it reads, writes or deletes from, where it takes payment, what it sends
-email through. It is free, MIT, and runs entirely locally; nothing is uploaded
-and it makes no network calls.
+`what-it-does` is an MIT-licensed CLI that reads a Next.js App Router or
+Cloudflare Pages Functions project without executing it and reports its entry
+points — pages, endpoints, form actions — with the effects of each: the tables
+it reads, writes or deletes from, payment calls, outbound email. It runs
+locally and makes no network calls. On an unsupported framework it says so
+rather than guessing.
 
-Supported today: **Next.js App Router** and **Cloudflare Pages Functions**.
-On anything else it will say so plainly rather than guess.
+## When to use it
 
-## Why this matters when an assistant is doing the editing
-
-A code diff shows which lines moved. It does not tell you that an endpoint
-stopped checking who was asking, or that the last thing writing to a table is
-gone and that table will now go quietly stale. Those are behaviour changes, and
-they are exactly the kind that survive review because nothing about the diff
-looks alarming.
+A code diff shows which lines moved. It does not show that an endpoint stopped
+checking who was asking, or that the last writer to a table is gone and the
+table will now go stale. Those are behaviour changes that survive review
+because nothing in the diff looks alarming — so compare behaviour before and
+after any edit to server-side code.
 
 ## The loop
 
@@ -71,8 +69,8 @@ npx what-it-does agent              # write this instruction into CLAUDE.md / AG
 npx what-it-does diff a.json b.json --fail-on-new   # exit 1 on a new finding, for CI
 ```
 
-The full report is a single self-contained HTML file: every way in ranked by
-consequence, a walkthrough of each one, a dependency map, and — once two scans
-exist — a timeline of what changed between them.
+The report is a single self-contained HTML file: entry points ranked by
+consequence, a walkthrough of each, a dependency map, and a timeline once two
+scans exist.
 
 Source: https://github.com/rolfe099-sketch/what-it-does
