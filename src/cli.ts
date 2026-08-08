@@ -178,34 +178,62 @@ ${DIM}Scan one directly:${RESET} what-it-does ${found[0].dir}`);
     return;
   }
 
+  /**
+   * One template for everything we cannot read.
+   *
+   * Every branch below says the same three things in the same order: WHAT this
+   * is, WHAT we read, and that the gap is OURS. That last clause is the one
+   * that matters and it is why the shape is shared — a stranger whose project
+   * we cannot open should never be left thinking the tool found their code
+   * wanting. It did not look at their code at all.
+   *
+   * The phrasing came from running the tool on a real 41-file Python repo and
+   * watching it announce that there was no server-side code and that a static
+   * site does what its HTML says. Both false, both stated with confidence.
+   */
+  const cannotReadIt = (why: 'language' | 'extractor') => {
+    // The reason has to match the case. Telling an Express user we "only read
+    // JavaScript" is nonsense — Express IS JavaScript, and the thing missing
+    // is the extractor. Only the closing clause is shared, because only the
+    // closing clause is true of every case.
+    if (why === 'language') {
+      console.error(`${DIM}We only read JavaScript and TypeScript today, so we cannot tell you`);
+      console.error(`anything about this — which is our limit, not a fact about your code.${RESET}`);
+    } else {
+      console.error(`${DIM}Until someone writes it we cannot tell you anything about this —`);
+      console.error(`which is our limit, not a fact about your code.${RESET}`);
+    }
+  };
+
   if (survey.recognised) {
-    // "This looks like X" rather than "This is a/an X project" — the names in
-    // the table are a mix of vowels, consonants and plurals, and no article
-    // fits all of them.
-    console.error(`\n${BOLD}This looks like ${survey.recognised.name}.${RESET}`);
-    console.error(`${DIM}We recognise it but cannot read it yet - nobody has written that`);
-    console.error(`extractor. It would key on ${survey.recognised.entryHint}.${RESET}`);
+    // "This looks like X" rather than "This is a/an X project": these names are
+    // a mix of vowels, consonants and plurals — "Netlify Functions" — and no
+    // article fits all of them.
+    console.error(`
+${BOLD}This looks like ${survey.recognised.name}.${RESET}`);
+    console.error(
+      `${DIM}We recognise it, but nobody has written that extractor yet — it would key`,
+    );
+    console.error(`on ${survey.recognised.entryHint}.${RESET}`);
+    cannotReadIt('extractor');
   } else if (survey.otherLanguages.length > 0 && survey.codeFiles === 0) {
-    /**
-     * Named, not guessed at.
-     *
-     * This branch exists because a 41-file Python application was told it was
-     * a static site whose HTML said everything — the tool being confidently
-     * wrong about somebody's entire codebase, on the output most strangers
-     * see first. "We cannot read Python" is a limit. "You have no server-side
-     * code" is a false claim about their work.
-     */
     const [main, ...rest] = survey.otherLanguages;
-    console.error(`\n${BOLD}This is a ${main.name} project.${RESET}`);
+    // `an Elixir project`, `a Python project`. The language names are ours, so
+    // a vowel check is enough — unlike the framework list above.
+    const article = /^[AEIOU]/i.test(main.name) ? 'an' : 'a';
+    console.error(`
+${BOLD}This is ${article} ${main.name} project.${RESET}`);
     console.error(
       `${DIM}${main.files} ${main.name} ${plural(main.files, 'file', 'files')}${
         rest.length > 0 ? `, plus ${rest.map((l) => l.name).join(' and ')}` : ''
-      }, and no JavaScript or TypeScript at all.`,
+      }, and no JavaScript or TypeScript at all.${RESET}`,
     );
-    console.error(`We only read JavaScript and TypeScript today, so we cannot tell you`);
-    console.error(`anything about this — which is our limit, not a fact about your code.${RESET}`);
+    cannotReadIt('language');
   } else if (survey.staticOnly) {
-    console.error(`\n${BOLD}There is no code here we recognise.${RESET}`);
+    // The one case where the absence really is a fact about their project
+    // rather than about us, so it does NOT get the shared closing line.
+    console.error(`
+${BOLD}There is no code here we recognise.${RESET}`);
     console.error(
       `${DIM}No JavaScript or TypeScript, and none of the other languages we can at least`,
     );
@@ -214,7 +242,8 @@ ${DIM}Scan one directly:${RESET} what-it-does ${found[0].dir}`);
     );
     return;
   } else {
-    console.error(`\n${BOLD}We could not identify a framework here.${RESET}`);
+    console.error(`
+${BOLD}We could not identify a framework here.${RESET}`);
     if (survey.nextReason) console.error(`${DIM}${survey.nextReason}${RESET}`);
     // The count stops at a budget, so past it we know a floor and not a total.
     // Printing the cap as if it were the answer would be a quietly invented
@@ -222,10 +251,9 @@ ${DIM}Scan one directly:${RESET} what-it-does ${found[0].dir}`);
     const count = survey.codeFilesCapped
       ? 'Thousands of source files are'
       : `${survey.codeFiles} source ${plural(survey.codeFiles, 'file is', 'files are')}`;
-    console.error(
-      `${DIM}${count} present, but nothing declares its entry points in a`,
-    );
+    console.error(`${DIM}${count} present, but nothing declares its entry points in a`);
     console.error(`way we know how to read.${RESET}`);
+    cannotReadIt('extractor');
   }
 
   heading('What we can read today');

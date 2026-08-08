@@ -23,3 +23,12 @@ Thumbs.db
 .DS_Store
 .vscode/
 .idea/
+
+# Internal working documents. They stay on disk and out of the repository:
+# strategy, budget, revenue targets, the launch drafts and the design
+# rationale are for the operator, not for a stranger reading the source.
+DECISIONS.md
+DESIGN.md
+METRICS.md
+LAUNCH.md
+PROJECT-ERIKSEN.md
