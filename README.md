@@ -115,6 +115,24 @@ npx what-it-does --json            # the snapshot as JSON, nothing else
 
 Writes `what-it-does-report.html` to the current directory.
 
+### Tell your AI assistant to use it
+
+```bash
+npx what-it-does agent
+```
+
+Adds a block to your `CLAUDE.md`, `AGENTS.md` or `.cursorrules` — whichever you
+already keep — instructing the assistant to record behaviour before it edits
+server-side code, compare afterwards, and tell you what moved.
+
+This is where the tool is most useful, because drift is worth most at the
+instant code changes. The assistant checks its own work and surfaces anything
+it flags rather than quietly acting on it, since a finding can be wrong and the
+report says what would make it one.
+
+Re-run any time; the block is replaced, never duplicated, and nothing else in
+the file is touched.
+
 ### Comparing two scans
 
 `--json` prints a snapshot and nothing else, so two of them can be compared —

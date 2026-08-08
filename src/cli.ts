@@ -25,6 +25,7 @@ import {
   type Snapshot,
 } from './report/drift.js';
 import { renderComment } from './report/comment.js';
+import { install as installAgent, AGENT_FILES } from './agent.js';
 import {
   CONSEQUENTIAL_EFFECTS,
   EFFECT_LABELS,
@@ -559,6 +560,35 @@ const argv = process.argv.slice(2);
 const positional = argv.filter((a) => !a.startsWith('-'));
 const wantsHelp = argv.some((a) => a === '--help' || a === '-h' || a === 'help');
 
+/**
+ * Put the instruction where the agent actually reads it.
+ *
+ * Aion benchmarked this over 27 sessions: as a skill the agent must choose to
+ * invoke, 22% adoption; named in the file read on every turn, 100%. The same
+ * work found authoring friction costs more adoption than features do — which
+ * is why this is a command rather than a snippet in a README somewhere.
+ */
+function setupAgent(target: string) {
+  const root = path.resolve(target);
+  const results = installAgent(root);
+
+  heading('Told your assistant to use this');
+  for (const r of results) {
+    const mark = r.action === 'unchanged' ? `${DIM}·${RESET}` : `${ACCENT}✓${RESET}`;
+    console.log(`  ${mark} ${r.file} ${DIM}${r.action}${RESET}`);
+  }
+
+  console.log(`
+${DIM}Claude Code, Cursor and Codex read these files on every turn. Yours now says
+to snapshot behaviour before editing server-side code, compare afterwards, and
+tell you what moved — so drift gets checked at the moment it happens rather
+than whenever someone remembers.${RESET}
+
+${DIM}Files it looks for:${RESET} ${AGENT_FILES.map((a) => a.file).join(', ')}
+${DIM}Re-run any time; the block is replaced, never duplicated.${RESET}
+`);
+}
+
 const flagValue = (name: string): string | undefined => {
   const at = argv.indexOf(name);
   return at !== -1 ? argv[at + 1] : undefined;
@@ -576,6 +606,11 @@ ${BOLD}what it does${RESET} — shows you what software you didn't write actuall
     --no-code     Omit source excerpts, for a report you intend to share
     --json        Print the snapshot as JSON, and nothing else
 
+  ${BOLD}npx what-it-does agent${RESET}              Tell your AI assistant to use this
+
+    Adds a block to CLAUDE.md / AGENTS.md / .cursorrules so your assistant
+    checks what its own edits changed, and tells you.
+
   ${BOLD}npx what-it-does diff${RESET} [a] [b]       Compare two snapshots
 
     --markdown    Render as a pull request comment
@@ -586,6 +621,8 @@ ${BOLD}what it does${RESET} — shows you what software you didn't write actuall
 Writes a single self-contained HTML file. No server, no network, no account —
 your code never leaves this machine, and neither does the report.
 `);
+} else if (positional[0] === 'agent' || positional[0] === 'init') {
+  setupAgent(positional[1] ?? process.cwd());
 } else if (positional[0] === 'diff') {
   const [before, after] = positional.slice(1);
   if (!before || !after) {
