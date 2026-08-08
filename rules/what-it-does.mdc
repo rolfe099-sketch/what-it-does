@@ -1,0 +1,78 @@
+---
+description: "Check what your edits actually changed about an application's behaviour — endpoints, what they read, write and delete, and whether a guard disappeared — using the what-it-does scanner. Apply when editing routes, server actions, middleware, or the code they reach."
+globs: **/app/**/route.ts, **/app/**/route.js, **/app/**/page.tsx, **/actions.ts, **/actions.js, **/middleware.ts, **/middleware.js, **/functions/**/*.ts, **/functions/**/*.js
+alwaysApply: false
+---
+
+# Checking what you changed with what-it-does
+
+`what-it-does` reads an application without running it and reports every way
+into it — pages, endpoints, form actions — and what each one really does: which
+tables it reads, writes or deletes from, where it takes payment, what it sends
+email through. It is free, MIT, and runs entirely locally; nothing is uploaded
+and it makes no network calls.
+
+Supported today: **Next.js App Router** and **Cloudflare Pages Functions**.
+On anything else it will say so plainly rather than guess.
+
+## Why this matters when an assistant is doing the editing
+
+A code diff shows which lines moved. It does not tell you that an endpoint
+stopped checking who was asking, or that the last thing writing to a table is
+gone and that table will now go quietly stale. Those are behaviour changes, and
+they are exactly the kind that survive review because nothing about the diff
+looks alarming.
+
+## The loop
+
+Before editing server-side code, record the current behaviour:
+
+```bash
+npx what-it-does --json > .what-it-does/before.json
+```
+
+After the edits are complete, compare and read the result:
+
+```bash
+npx what-it-does --json > .what-it-does/after.json
+npx what-it-does diff .what-it-does/before.json .what-it-does/after.json
+```
+
+The comparison is in behaviour, not in lines:
+
+```
+DELETE /api/projects/[id]
+  − No longer: Checks who is asking
+  ! 1 new thing worth checking
+```
+
+## Rules for using it
+
+- **Surface what it flags. Do not silently act on it.** A finding can be a
+  false alarm — a guard may live behind an import the scanner could not
+  follow — and the report states what would make each one wrong. Tell the
+  user what it said and let them decide.
+- **Skip it for changes that cannot alter behaviour**: styling, copy,
+  comments, tests, documentation, configuration nothing branches on. Running
+  it on a CSS change wastes a step and teaches everyone to ignore the output.
+- **Absence of a finding is not proof.** The scanner reads code without
+  executing it, so anything reached through a name chosen at runtime is
+  invisible to it. It says so itself rather than implying coverage it does
+  not have.
+- Add `.what-it-does/` to `.gitignore`; the snapshots are local scratch.
+
+## Other commands
+
+```bash
+npx what-it-does                    # scan here, write and open the HTML report
+npx what-it-does ../other-app       # scan somewhere else
+npx what-it-does --no-code          # omit source excerpts, for a shareable report
+npx what-it-does agent              # write this instruction into CLAUDE.md / AGENTS.md
+npx what-it-does diff a.json b.json --fail-on-new   # exit 1 on a new finding, for CI
+```
+
+The full report is a single self-contained HTML file: every way in ranked by
+consequence, a walkthrough of each one, a dependency map, and — once two scans
+exist — a timeline of what changed between them.
+
+Source: https://github.com/rolfe099-sketch/what-it-does
