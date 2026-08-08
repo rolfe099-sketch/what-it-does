@@ -152,6 +152,29 @@ describe('an unsupported project is told something useful', () => {
     assert.ok(detected.supported === false && detected.survey.codeFiles > 0);
   });
 
+  test('a project in a language we cannot read is NAMED, not misdescribed', () => {
+    // Found by running the tool on a real 41-file Python repo: it reported
+    // "there is no server-side code here" and "a static site does what its
+    // HTML says", because the file census counted only JavaScript. Being
+    // confidently wrong about someone's entire codebase is the worst thing
+    // this tool can say, and it was saying it on its most-seen output.
+    const detected = detectFramework(fixture('pythonapp'));
+    assert.equal(detected.supported, false);
+    const survey = detected.supported === false ? detected.survey : null;
+
+    assert.equal(survey?.staticOnly, false, 'a Python project is not a static site');
+    assert.equal(survey?.otherLanguages[0].name, 'Python');
+    assert.equal(survey?.otherLanguages[0].files, 2);
+    assert.equal(survey?.codeFiles, 0, 'and there is genuinely no JavaScript to read');
+  });
+
+  test('a directory with no code at all is still allowed to be static', () => {
+    // The narrowing must not cost us the case the old branch got right.
+    const detected = detectFramework(fixture('emptydir'));
+    assert.equal(detected.supported === false && detected.survey.staticOnly, true);
+    assert.equal(detected.supported === false && detected.survey.otherLanguages.length, 0);
+  });
+
   test('a workspace root points at the application one level down', () => {
     // Pointing the tool at a monorepo root is the single most likely way to
     // reach this path, and "we could not identify a framework" is both true and

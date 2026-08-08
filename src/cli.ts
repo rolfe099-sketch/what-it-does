@@ -185,12 +185,33 @@ ${DIM}Scan one directly:${RESET} what-it-does ${found[0].dir}`);
     console.error(`\n${BOLD}This looks like ${survey.recognised.name}.${RESET}`);
     console.error(`${DIM}We recognise it but cannot read it yet - nobody has written that`);
     console.error(`extractor. It would key on ${survey.recognised.entryHint}.${RESET}`);
-  } else if (survey.staticOnly) {
-    console.error(`\n${BOLD}There is no server-side code here.${RESET}`);
+  } else if (survey.otherLanguages.length > 0 && survey.codeFiles === 0) {
+    /**
+     * Named, not guessed at.
+     *
+     * This branch exists because a 41-file Python application was told it was
+     * a static site whose HTML said everything — the tool being confidently
+     * wrong about somebody's entire codebase, on the output most strangers
+     * see first. "We cannot read Python" is a limit. "You have no server-side
+     * code" is a false claim about their work.
+     */
+    const [main, ...rest] = survey.otherLanguages;
+    console.error(`\n${BOLD}This is a ${main.name} project.${RESET}`);
     console.error(
-      `${DIM}No JavaScript or TypeScript that runs on a server, so there are no behaviours`,
+      `${DIM}${main.files} ${main.name} ${plural(main.files, 'file', 'files')}${
+        rest.length > 0 ? `, plus ${rest.map((l) => l.name).join(' and ')}` : ''
+      }, and no JavaScript or TypeScript at all.`,
     );
-    console.error(`to describe. A static site does what its HTML says and nothing more.${RESET}`);
+    console.error(`We only read JavaScript and TypeScript today, so we cannot tell you`);
+    console.error(`anything about this — which is our limit, not a fact about your code.${RESET}`);
+  } else if (survey.staticOnly) {
+    console.error(`\n${BOLD}There is no code here we recognise.${RESET}`);
+    console.error(
+      `${DIM}No JavaScript or TypeScript, and none of the other languages we can at least`,
+    );
+    console.error(
+      `name. If this is a static site, it does what its HTML says and nothing more.${RESET}`,
+    );
     return;
   } else {
     console.error(`\n${BOLD}We could not identify a framework here.${RESET}`);

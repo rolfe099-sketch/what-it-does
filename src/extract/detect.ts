@@ -83,11 +83,16 @@ const FINGERPRINTS: Fingerprint[] = [
 export interface Survey {
   /** The framework we recognised but cannot read, if any. */
   recognised?: { name: string; entryHint: string };
-  /** Server-side source files we can see but have no route model for. */
+  /** JavaScript or TypeScript files we can see but have no route model for. */
   codeFiles: number;
+  /**
+   * Code in languages we do not read at all, biggest first. Naming the
+   * language is the difference between a useful limit and a wrong claim.
+   */
+  otherLanguages: { name: string; files: number }[];
   /** True when the count above hit its budget, so it is a floor and not a total. */
   codeFilesCapped: boolean;
-  /** True when there is no server-side code here at all. */
+  /** True when there is no code of ANY language we can recognise. */
   staticOnly: boolean;
   /**
    * Readable applications sitting one level down. The single most useful thing
@@ -101,16 +106,48 @@ export interface Survey {
 }
 
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
+
+/**
+ * Languages we cannot read, so that we can at least say which one it is.
+ *
+ * "There is no server-side code here" was computed from the count of
+ * JavaScript files alone, which meant a 41-file Python application was told
+ * it was a static site whose HTML said everything. Confidently wrong about
+ * somebody's whole codebase is the single worst thing this tool can say, and
+ * it was saying it on the path most strangers arrive at first.
+ */
+const OTHER_LANGUAGES: { name: string; extensions: string[] }[] = [
+  { name: 'Python', extensions: ['.py'] },
+  { name: 'Go', extensions: ['.go'] },
+  { name: 'Rust', extensions: ['.rs'] },
+  { name: 'Ruby', extensions: ['.rb'] },
+  { name: 'PHP', extensions: ['.php'] },
+  { name: 'Java', extensions: ['.java', '.kt'] },
+  { name: 'C#', extensions: ['.cs'] },
+  { name: 'Elixir', extensions: ['.ex', '.exs'] },
+  { name: 'Swift', extensions: ['.swift'] },
+  { name: 'Dart', extensions: ['.dart'] },
+];
 const IGNORED_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', 'out', '.next', '.wrangler', 'coverage', 'vendor',
 ]);
 
 const FILE_BUDGET = 4000;
 
-function countSourceFiles(dir: string, budget = FILE_BUDGET): number {
-  let count = 0;
+interface FileCensus {
+  /** JavaScript and TypeScript — the only thing we can actually read. */
+  readable: number;
+  /** Whatever else is here, biggest first. */
+  others: { name: string; files: number }[];
+}
+
+function census(dir: string, budget = FILE_BUDGET): FileCensus {
+  let readable = 0;
+  let seen = 0;
+  const byLanguage = new Map<string, number>();
   const stack = [dir];
-  while (stack.length > 0 && count < budget) {
+
+  while (stack.length > 0 && seen < budget) {
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(stack.pop()!, { withFileTypes: true });
@@ -121,12 +158,27 @@ function countSourceFiles(dir: string, budget = FILE_BUDGET): number {
       const full = path.join(entry.parentPath ?? dir, entry.name);
       if (entry.isDirectory()) {
         if (!IGNORED_DIRS.has(entry.name)) stack.push(full);
-      } else if (SOURCE_EXTENSIONS.has(path.extname(entry.name))) {
-        count++;
+        continue;
+      }
+      const extension = path.extname(entry.name);
+      if (SOURCE_EXTENSIONS.has(extension)) {
+        readable++;
+        seen++;
+        continue;
+      }
+      const language = OTHER_LANGUAGES.find((l) => l.extensions.includes(extension));
+      if (language) {
+        byLanguage.set(language.name, (byLanguage.get(language.name) ?? 0) + 1);
+        seen++;
       }
     }
   }
-  return count;
+
+  const others = [...byLanguage.entries()]
+    .map(([name, files]) => ({ name, files }))
+    .sort((a, b) => b.files - a.files);
+
+  return { readable, others };
 }
 
 function surveyUnsupported(root: string, nextReason?: string): Survey {
@@ -149,12 +201,14 @@ function surveyUnsupported(root: string, nextReason?: string): Survey {
     }
   }
 
-  const codeFiles = countSourceFiles(root);
+  const counted = census(root);
   return {
     recognised,
-    codeFiles,
-    codeFilesCapped: codeFiles >= FILE_BUDGET,
-    staticOnly: codeFiles === 0,
+    codeFiles: counted.readable,
+    codeFilesCapped: counted.readable >= FILE_BUDGET,
+    otherLanguages: counted.others,
+    // Only a project with no recognisable code in ANY language is static.
+    staticOnly: counted.readable === 0 && counted.others.length === 0,
     scannableChildren: findScannableChildren(root),
     nextReason,
   };
