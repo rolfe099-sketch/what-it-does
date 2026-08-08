@@ -11,6 +11,9 @@ DELETE /api/projects/[id]
 
 ## Use it
 
+Copy [`example-workflow.yml`](./example-workflow.yml) to
+`.github/workflows/what-it-does.yml`, or start from this:
+
 ```yaml
 name: what it does
 on: pull_request

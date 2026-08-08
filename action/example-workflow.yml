@@ -1,0 +1,52 @@
+# What it does — pull request check
+#
+# Drop this at .github/workflows/what-it-does.yml in the repository you want
+# checked. On every pull request it scans the base branch, scans yours, and
+# comments with what changed about the application's BEHAVIOUR — which
+# endpoints exist, what data each touches, and whether a check on who is
+# asking disappeared.
+#
+# It says nothing when nothing changed, and it edits its own comment rather
+# than adding a new one per push.
+
+name: what it does
+on:
+  pull_request:
+    # Optional but worth keeping: no point scanning a docs-only change.
+    # Delete this block to run on every pull request.
+    paths:
+      - '**.ts'
+      - '**.tsx'
+      - '**.js'
+      - '**.jsx'
+      - '**.mjs'
+      - 'supabase/config.toml'
+
+jobs:
+  behaviour:
+    runs-on: ubuntu-latest
+
+    # contents: read      to check out both branches
+    # pull-requests: write to leave the comment
+    # Nothing else. A check that asks for more access than it needs is a check
+    # that deserves to be questioned.
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: rolfe099-sketch/what-it-does/action@v1
+        with:
+          # Free on public repositories — leave this out entirely there.
+          # On a private repository, add the key as a repository secret:
+          # Settings → Secrets and variables → Actions → New repository secret
+          licence-key: ${{ secrets.WHAT_IT_DOES_KEY }}
+
+          # Where the application is, if it is not at the repository root.
+          # e.g. apps/web for a monorepo, or . for a plain project.
+          path: .
+
+          # Start with this off. Turn it on once you have seen a few real
+          # comments and trust what it reports — a check that breaks the build
+          # on the day it is installed is a check that gets uninstalled.
+          fail-on-new: false
