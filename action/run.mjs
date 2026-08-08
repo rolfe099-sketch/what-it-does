@@ -37,6 +37,29 @@ const TIERS = [
   { name: 'Scale', max: Infinity, price: '$399/mo' },
 ];
 
+/**
+ * The run page, not the log.
+ *
+ * Fail-open has a cost: a green run tells you nothing about whether the check
+ * actually looked at anything. On its first real pull request this produced a
+ * successful run, no comment, and no way to find out why without credentials
+ * to download the logs. So every outcome now writes a summary panel — what it
+ * read, what it found, and what it decided — which is visible on the run page
+ * to anyone who can see the repository.
+ */
+function summary(lines) {
+  const file = process.env.GITHUB_STEP_SUMMARY;
+  const text = lines.join('\n');
+  console.log(text.replace(/[#*`]/g, ''));
+  if (file) {
+    try {
+      fs.appendFileSync(file, text + '\n');
+    } catch {
+      /* the log above already carried it */
+    }
+  }
+}
+
 function setOutput(name, value) {
   if (!OUT) return;
   // The delimiter form, because the markdown is multi-line and the plain
@@ -160,14 +183,36 @@ async function main() {
     afterJson = run(process.execPath, [...cli, head, '--json']);
   } catch (error) {
     // An unreadable project is not a build failure. It is usually a framework
-    // we do not support yet, and the CLI already says so on stderr.
-    console.log('what-it-does could not read this project; nothing to compare.');
-    console.log(String(error.stderr || error.message || error).slice(0, 800));
+    // we do not support yet, and the CLI says which on stderr — printed in
+    // full, because a truncated explanation is how a fixable problem stays
+    // unfixed.
+    summary([
+      '## what it does — nothing to compare',
+      '',
+      'The scan could not read this project, so the check passed without',
+      'comparing anything. This is not a build failure.',
+      '',
+      '```',
+      String(error.stderr || error.message || error).trim(),
+      '```',
+      '',
+      `Scanned: \`${base}\` and \`${head}\``,
+    ]);
     setOutput('changed', '0');
     setOutput('new-findings', '0');
     setOutput('markdown', '');
     return;
   }
+
+  const waysIn = (json) => {
+    try {
+      return JSON.parse(json).behaviours.length;
+    } catch {
+      return -1;
+    }
+  };
+  const baseWays = waysIn(beforeJson);
+  const headWays = waysIn(afterJson);
 
   fs.writeFileSync('.wid-before.json', beforeJson);
   fs.writeFileSync('.wid-after.json', afterJson);
@@ -185,8 +230,15 @@ async function main() {
       '`' + (process.env.GITHUB_BASE_REF || 'the base branch') + '`',
     ]);
   } catch (error) {
-    console.log('The comparison failed. Not failing the build over it.');
-    console.log(String(error.stderr || error.message || error).slice(0, 800));
+    summary([
+      '## what it does — the comparison failed',
+      '',
+      'Not failing the build over it. This is our bug, not yours.',
+      '',
+      '```',
+      String(error.stderr || error.message || error).trim(),
+      '```',
+    ]);
     setOutput('changed', '0');
     setOutput('new-findings', '0');
     setOutput('markdown', '');
@@ -204,7 +256,13 @@ async function main() {
 
   // ---- say nothing when nothing happened ---------------------------------
   if (changed === 0) {
-    console.log('No change to what this application can do.');
+    summary([
+      '## what it does — nothing moved',
+      '',
+      `Read **${baseWays}** ways in on the base branch and **${headWays}** on this one.`,
+      'Nothing this pull request does changes what the application can do, so',
+      'no comment was posted.',
+    ]);
     setOutput('markdown', '');
     return;
   }
@@ -216,7 +274,14 @@ async function main() {
   const body = `<!-- what-it-does -->\n${markdown.trim()}${licenceNote(committers, tier, valid)}`;
   setOutput('markdown', body);
 
-  console.log(`${changed} behaviour(s) changed, ${newFindings} new finding(s).`);
+  summary([
+    '## what it does',
+    '',
+    `Read **${baseWays}** ways in on the base branch and **${headWays}** on this one.`,
+    `**${changed}** changed, **${newFindings}** new ${newFindings === 1 ? 'finding' : 'findings'}.`,
+    '',
+    'The comparison was posted as a pull request comment.',
+  ]);
 
   if (FAIL_ON_NEW && newFindings > 0) {
     console.error(`Failing because ${newFindings} new finding(s) appeared and fail-on-new is set.`);
@@ -226,6 +291,15 @@ async function main() {
 
 main().catch((error) => {
   // The last line of defence for the fail-open rule.
-  console.log('what-it-does hit an unexpected error and is stepping aside.');
-  console.log(String(error?.stack || error).slice(0, 1000));
+  summary([
+    '## what it does — stepped aside',
+    '',
+    'Something unexpected happened and the check passed rather than blocking',
+    'you. This is our bug. The detail below is worth sending to',
+    'support@eriksenlabs.com.',
+    '',
+    '```',
+    String(error?.stack || error).trim(),
+    '```',
+  ]);
 });
