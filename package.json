@@ -37,7 +37,8 @@
     "check": "tsc --noEmit && tsc -p tsconfig.test.json && npm test",
     "scan": "tsx src/cli.ts scan",
     "demo": "bash make-demo.sh",
-    "prepublishOnly": "npm run check && npm run build"
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run check"
   },
   "dependencies": {
     "typescript": "^5.9.3"
