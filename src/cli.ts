@@ -206,6 +206,35 @@ ${DIM}Scan one directly:${RESET} what-it-does ${found[0].dir}`);
     }
   };
 
+  if (survey.recognised?.clientOnly) {
+    /**
+     * A finished answer, not a promise of a future one.
+     *
+     * Everything in a single-page app runs in the browser, so there are no
+     * server-side entry points — not today, and not after somebody writes an
+     * extractor. Saying "nobody has written that yet" here would invite the
+     * reader to come back for something that is never going to exist.
+     *
+     * This branch matters more than its size: Lovable and Bolt emit Vite React
+     * apps, so the people this scanner is built for are more likely to hold
+     * one of these than anything else.
+     */
+    console.error(`
+${BOLD}This looks like ${survey.recognised.name}.${RESET}`);
+    console.error(
+      `${DIM}Everything in it runs in the browser, so there are no server-side ways in`,
+    );
+    console.error(
+      `for us to map — that is a fact about the architecture, not a gap in this tool.`,
+    );
+    console.error(
+      `
+If it talks to a backend, point us at that instead. We read Next.js and`,
+    );
+    console.error(`Cloudflare Pages today.${RESET}`);
+    return;
+  }
+
   if (survey.recognised) {
     // "This looks like X" rather than "This is a/an X project": these names are
     // a mix of vowels, consonants and plurals — "Netlify Functions" — and no

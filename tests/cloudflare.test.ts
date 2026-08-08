@@ -175,6 +175,33 @@ describe('an unsupported project is told something useful', () => {
     assert.equal(detected.supported === false && detected.survey.otherLanguages.length, 0);
   });
 
+  test('a browser-only app is told there is no server, not to come back later', () => {
+    // Found by scanning a real Vite React repo, which got "we could not
+    // identify a framework here". Vite is what Lovable and Bolt emit, so the
+    // people this tool is built for are more likely to hold one of these than
+    // anything else — and that answer was the worst one available.
+    const detected = detectFramework(fixture('viteapp'));
+    assert.equal(detected.supported, false);
+    const survey = detected.supported === false ? detected.survey : null;
+
+    assert.match(survey?.recognised?.name ?? '', /Vite/);
+    assert.equal(
+      survey?.recognised?.clientOnly,
+      true,
+      'the absence of a server is an architectural fact, not a missing extractor',
+    );
+  });
+
+  test('a server framework is NOT marked client-only', () => {
+    // The flag decides between "there is nothing to find" and "nobody has
+    // written that yet". Getting it backwards would tell an Express user their
+    // app has no server.
+    const detected = detectFramework(fixture('unsupported'));
+    const survey = detected.supported === false ? detected.survey : null;
+    assert.equal(survey?.recognised?.name, 'Express');
+    assert.notEqual(survey?.recognised?.clientOnly, true);
+  });
+
   test('a workspace root points at the application one level down', () => {
     // Pointing the tool at a monorepo root is the single most likely way to
     // reach this path, and "we could not identify a framework" is both true and

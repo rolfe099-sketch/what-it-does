@@ -61,9 +61,41 @@ interface Fingerprint {
   marker?: string;
   /** Where its entry points live, if someone wanted to write the extractor. */
   entryHint: string;
+  /**
+   * Everything runs in the browser, so there are no server-side entry points
+   * to find — not now, and not after someone writes an extractor.
+   *
+   * The distinction matters because the honest answer is completely different.
+   * "Nobody has written that extractor yet" invites you to come back later.
+   * "There is no server here" is a finished answer about your architecture,
+   * and saying the first when the second is true wastes the reader's time.
+   */
+  clientOnly?: boolean;
 }
 
 const FINGERPRINTS: Fingerprint[] = [
+  /**
+   * Vite comes first because it is what the tools this scanner exists for
+   * actually emit. Lovable and Bolt generate Vite + React single-page apps,
+   * so a person who built their product by describing it to an assistant is
+   * more likely to be holding one of these than anything else on this list —
+   * and telling them "we could not identify a framework here" is the worst
+   * possible answer for exactly the audience we are built for.
+   *
+   * Ordered before the React entry so a Vite React app is called Vite.
+   */
+  {
+    name: 'a Vite single-page app',
+    dependency: 'vite',
+    entryHint: 'nothing on a server — the browser runs all of it',
+    clientOnly: true,
+  },
+  {
+    name: 'a React single-page app',
+    dependency: 'react-scripts',
+    entryHint: 'nothing on a server — the browser runs all of it',
+    clientOnly: true,
+  },
   { name: 'SvelteKit', dependency: '@sveltejs/kit', entryHint: 'src/routes/**/+server.ts' },
   { name: 'Nuxt', dependency: 'nuxt', entryHint: 'server/api/**' },
   { name: 'Remix', dependency: '@remix-run/node', entryHint: 'app/routes/**/*.tsx loaders and actions' },
@@ -82,7 +114,7 @@ const FINGERPRINTS: Fingerprint[] = [
 
 export interface Survey {
   /** The framework we recognised but cannot read, if any. */
-  recognised?: { name: string; entryHint: string };
+  recognised?: { name: string; entryHint: string; clientOnly?: boolean };
   /** JavaScript or TypeScript files we can see but have no route model for. */
   codeFiles: number;
   /**
@@ -196,7 +228,7 @@ function surveyUnsupported(root: string, nextReason?: string): Survey {
     const byMarker =
       print.marker !== undefined && fs.existsSync(path.join(root, ...print.marker.split('/')));
     if (byDependency || byMarker) {
-      recognised = { name: print.name, entryHint: print.entryHint };
+      recognised = { name: print.name, entryHint: print.entryHint, clientOnly: print.clientOnly };
       break;
     }
   }
