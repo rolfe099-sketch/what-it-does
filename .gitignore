@@ -32,3 +32,7 @@ DESIGN.md
 METRICS.md
 LAUNCH.md
 PROJECT-ERIKSEN.md
+
+# Local editor/agent config. Points at a sibling checkout that does not exist
+# in this repository, so it is confusing to anyone but the author.
+.claude/
