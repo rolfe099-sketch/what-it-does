@@ -24,6 +24,10 @@ import { execFileSync, execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+// Its own module, and the one piece of this with a test that talks to the real
+// API. See licence.mjs for what went wrong when it did not have one.
+import { checkLicence } from './licence.mjs';
+
 const OUT = process.env.GITHUB_OUTPUT;
 const KEY = (process.env.WID_LICENCE_KEY || '').trim();
 const SUBPATH = process.env.WID_PATH || '.';
@@ -131,42 +135,20 @@ function tierFor(committers) {
   return TIERS.find((t) => committers <= t.max) ?? TIERS[TIERS.length - 1];
 }
 
-/**
- * Ask Polar whether the key is real. Public endpoint, key only.
- *
- * Returns true on any failure that is not an explicit rejection, because
- * fail-open is the rule. A network blip must never look like piracy.
- */
-async function licenceIsValid(key) {
-  if (!key) return false;
-  try {
-    const response = await fetch('https://api.polar.sh/v1/customer-portal/license-keys/validate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key }),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (response.status === 404 || response.status === 403) return false;
-    if (!response.ok) return true; // our problem, not theirs
-    const body = await response.json();
-    return body?.status ? body.status === 'granted' : true;
-  } catch {
-    return true; // unreachable: assume good faith
-  }
-}
-
 /** One quiet line, in the comment they are already reading. */
-function licenceNote(committers, tier, valid) {
+function licenceNote(committers, tier, licence) {
   if (!IS_PRIVATE) return ''; // public repositories are free, always
 
-  if (!KEY) {
+  if (licence.verdict === 'absent') {
     return `\n\n<sub>This is a private repository with **${committers} active ${
       committers === 1 ? 'committer' : 'committers'
     }** in the last 90 days — the ${tier.name} tier, ${tier.price}. Running unlicensed. → https://eriksenlabs.com/#what-it-does</sub>`;
   }
-  if (!valid) {
+  if (licence.verdict === 'rejected') {
     return `\n\n<sub>The licence key on this repository was not recognised. → https://eriksenlabs.com/#what-it-does</sub>`;
   }
+  // 'granted', and 'unreachable' — which is our problem to notice on the run
+  // page, not theirs to read about on their pull request.
   return '';
 }
 
@@ -269,16 +251,29 @@ async function main() {
 
   const committers = activeCommitters(head);
   const tier = tierFor(committers);
-  const valid = await licenceIsValid(KEY);
+  const licence = await checkLicence(KEY);
 
-  const body = `<!-- what-it-does -->\n${markdown.trim()}${licenceNote(committers, tier, valid)}`;
+  const body = `<!-- what-it-does -->\n${markdown.trim()}${licenceNote(committers, tier, licence)}`;
   setOutput('markdown', body);
+
+  // Named out loud, because the whole class of bug this replaced was one where
+  // "checked and fine" and "never actually checked" printed the same thing.
+  const LICENCE_LINE = {
+    absent: 'Licence: none configured — private repositories need a key.',
+    granted: 'Licence: valid.',
+    rejected: 'Licence: rejected by Polar.',
+    unreachable: 'Licence: could not be checked, so the check passed anyway.',
+  };
 
   summary([
     '## what it does',
     '',
     `Read **${baseWays}** ways in on the base branch and **${headWays}** on this one.`,
     `**${changed}** changed, **${newFindings}** new ${newFindings === 1 ? 'finding' : 'findings'}.`,
+    '',
+    IS_PRIVATE
+      ? `${LICENCE_LINE[licence.verdict]}${licence.detail ? ` (${licence.detail})` : ''}`
+      : 'Public repository — free, no licence needed.',
     '',
     'The comparison was posted as a pull request comment.',
   ]);
