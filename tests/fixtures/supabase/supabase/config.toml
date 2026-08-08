@@ -1,0 +1,14 @@
+project_id = "demo"
+
+[api]
+enabled = true
+port = 54321
+
+[functions.public-webhook]
+verify_jwt = false
+
+[functions.charge]
+verify_jwt = false
+
+[functions.delete-account]
+verify_jwt = false

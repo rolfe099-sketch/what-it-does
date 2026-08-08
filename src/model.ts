@@ -174,6 +174,18 @@ export interface Trigger {
   methods?: string[];
   /** For server-action: the exported function name. */
   exportName?: string;
+  /**
+   * A check the PLATFORM performs before this code runs, described in plain
+   * words. Supabase's `verify_jwt = true` rejects an unauthenticated request
+   * before the function starts; nothing inside the body will ever look like a
+   * check, because the check already happened somewhere the code cannot see.
+   *
+   * Modelling this as middleware coverage understated it — that path only
+   * softens a finding to "may well be doing the check". This is not a hedge:
+   * the check is definite, so it becomes a real auth check on the behaviour
+   * and the walkthrough shows it where it belongs, first.
+   */
+  platformCheck?: string;
   source: SourceRef;
 }
 

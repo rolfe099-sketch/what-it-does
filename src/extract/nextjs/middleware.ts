@@ -20,6 +20,13 @@ import ts from 'typescript';
 export interface MiddlewareInfo {
   present: boolean;
   /**
+   * What to say when there is no upstream gate, in the vocabulary of THIS
+   * framework. Supabase has no middleware; telling a Supabase user that their
+   * project "has no middleware" is jargon about a concept they do not have,
+   * when the accurate sentence is that verify_jwt is off for that function.
+   */
+  absentNote?: string;
+  /**
    * Matcher patterns as written. `null` means middleware exists but declares no
    * matcher, which in Next.js means it runs on every request.
    */

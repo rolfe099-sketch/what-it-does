@@ -29,6 +29,10 @@ import {
   detectCloudflarePages,
   findEntryPoints as findCloudflareEntryPoints,
 } from './cloudflare/entrypoints.js';
+import {
+  detectSupabase,
+  findEntryPoints as findSupabaseEntryPoints,
+} from './supabase/entrypoints.js';
 
 export interface FrameworkScan {
   /** Shown in the report header, e.g. "Next.js 15.1.0". */
@@ -105,7 +109,6 @@ const FINGERPRINTS: Fingerprint[] = [
   { name: 'Fastify', dependency: 'fastify', entryHint: 'fastify.route() registrations' },
   { name: 'NestJS', dependency: '@nestjs/core', entryHint: '@Controller and @Get decorators' },
   { name: 'Netlify Functions', marker: 'netlify/functions', entryHint: 'netlify/functions/**/handler' },
-  { name: 'Supabase Edge Functions', marker: 'supabase/functions', entryHint: 'supabase/functions/**/index.ts' },
   { name: 'Vercel Serverless Functions', marker: 'api', entryHint: 'api/**/*.ts default exports' },
   { name: 'Django', marker: 'manage.py', entryHint: 'urls.py route tables' },
   { name: 'Rails', marker: 'config/routes.rb', entryHint: 'config/routes.rb' },
@@ -273,6 +276,13 @@ function findScannableChildren(root: string): { dir: string; framework: string }
       found.push({ dir: relative.split(path.sep).join('/'), framework: 'Next.js' });
       return;
     }
+    // A Vite front end with a Supabase backend beside it is the shape Lovable
+    // and Bolt produce, so this is the child most worth pointing at.
+    if (detectSupabase(full).found && findSupabaseEntryPoints(full).triggers.length > 0) {
+      found.push({ dir: relative.split(path.sep).join('/'), framework: 'Supabase Edge Functions' });
+      return;
+    }
+
     // Same rule as the top-level detector: a directory called `functions` is a
     // popular name for ordinary source code, so the evidence is handlers, not
     // the folder. dub has a packages/utils/functions that means nothing.
@@ -342,6 +352,27 @@ export function detectFramework(root: string): Detection {
     }
     // A Next.js project with no app/ is Pages Router. Fall through rather than
     // exit: if it also has functions/, that part is still readable.
+  }
+
+  /**
+   * Supabase before Cloudflare, because a project can plausibly carry both and
+   * the functions directory holds the application's own logic.
+   */
+  const supabase = detectSupabase(root);
+  if (supabase.found) {
+    const { functionsDir, triggers, skipped, middleware } = findSupabaseEntryPoints(root);
+    if (triggers.length > 0) {
+      return {
+        supported: true,
+        scan: {
+          framework: 'Supabase Edge Functions',
+          where: `functions at ${functionsDir}`,
+          triggers,
+          skipped,
+          middleware,
+        },
+      };
+    }
   }
 
   const cloudflare = detectCloudflarePages(root);

@@ -122,12 +122,30 @@ export function buildBehaviours(
     // sequence across files, and could not show that a check stops everything.
     const steps = sourceFile ? extractSteps(sourceFile, trigger.source.file, range) : [];
 
+    /**
+     * A platform check goes FIRST, because that is when it happens — before
+     * any line of the function. It is marked isAuthCheck so gap detection
+     * treats it as what it is: a definite establishment of who is asking.
+     */
+    const effects = trigger.platformCheck
+      ? [
+          {
+            kind: 'reads-data' as const,
+            description: trigger.platformCheck,
+            source: trigger.source,
+            confidence: 'certain' as const,
+            isAuthCheck: true,
+          },
+          ...traced.effects,
+        ]
+      : traced.effects;
+
     const behaviour: Behaviour = {
       id: idFor(trigger),
       title: titleFor(trigger),
       trigger,
       steps,
-      effects: traced.effects,
+      effects,
       unknowns: traced.unknowns,
       gaps: [],
     };

@@ -71,7 +71,7 @@ labelled *worked out*, not *in the code*.
 
 | | |
 |---|---|
-| Frameworks | Next.js **App Router**, Cloudflare **Pages Functions** |
+| Frameworks | Next.js **App Router**, Cloudflare **Pages Functions**, **Supabase Edge Functions** |
 | Data | Supabase, Prisma, Drizzle |
 | Auth | Supabase Auth, NextAuth / Auth.js, Clerk |
 | Payments | Stripe |
@@ -82,6 +82,16 @@ Calls made with a plain `fetch` are read too, when the URL is written out: the
 hostname says what an SDK name would have. `api.stripe.com` moves money whether
 or not you imported the library — which matters most on edge runtimes, where
 there often is no library.
+
+On Supabase it reads `supabase/config.toml` as well as the code, because
+`verify_jwt` is authorisation that happens before your function runs. A scanner
+blind to it would report every properly-protected function as unguarded — so a
+function absent from that file is treated as protected, which is what the
+platform actually does.
+
+If you built a front end with Lovable or Bolt, the scanner will tell you the
+front end is browser-only and there is nothing on a server to map. Point it at
+your `supabase/` directory instead — that is where your behaviour lives.
 
 Pages Router, Express, Remix, SvelteKit, Rails and FastAPI are not supported.
 The core model — *a behaviour is a trigger, a path and a set of effects* — is

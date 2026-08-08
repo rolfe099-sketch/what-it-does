@@ -747,6 +747,12 @@ export const AUTH_CHECK_NAME_PATTERNS: RegExp[] = [
   /^with\w*(Auth|Token|Session|Admin|User|Workspace|Access|Key|Guard|Permission|Role|Owner|Member|Partner|Program|Embed)/i,
   // Direct fetches of the current actor
   /^(requireAuth|requireUser|requireSession|getCurrentUser|getAuthUser|getUserOrThrow|protect|authorize|authorise)$/i,
+  /**
+   * Deno's own JWT verification, which is how a Supabase Edge Function checks
+   * a caller by hand when verify_jwt is switched off in config.toml. Reaching
+   * for it is a deliberate act — nobody calls verify() by accident.
+   */
+  /^(verifyJWT|verifyJwt|getUserFromRequest|requireAuthenticatedUser)$/i,
 ];
 
 /**

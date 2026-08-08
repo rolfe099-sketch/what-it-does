@@ -125,7 +125,9 @@ function unprotectedDestructive(behaviour: Behaviour, context: GapContext): Gap[
 
   if (!context.middleware.present) {
     coverage =
-      'This project has no middleware, so nothing is checking upstream either. If the check happens inside a wrapper we could not follow, this is a false alarm.';
+      (context.middleware.absentNote ??
+        'This project has no middleware, so nothing is checking upstream either.') +
+      ' If the check happens inside a wrapper we could not follow, this is a false alarm.';
     confidence = 'likely';
   } else if (kind === 'server-action') {
     // A server action posts to whichever page rendered it, so its middleware
