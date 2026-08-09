@@ -1,0 +1,34 @@
+Copyright (c) 2026 Eriksen ENK. All rights reserved.
+
+This directory is NOT covered by the MIT license at the root of this
+repository. The scanner is free software; this pull request check is not.
+
+WHAT YOU MAY DO
+
+  Read it. It is plain JavaScript in a public repository, and reading what a
+  tool does before running it in your pipeline is exactly the habit this
+  product exists to support. Nothing here is obfuscated and nothing will be.
+
+  Run it on a public repository, free of charge, with no licence key and no
+  account.
+
+  Run it on repositories your organisation owns, for as long as you hold a
+  valid licence key. One key covers one organisation and every repository it
+  owns. Terms and prices: https://eriksenlabs.com/#what-it-does
+
+WHAT YOU MAY NOT DO
+
+  Redistribute, resell, sublicense or republish it, in whole or in part.
+
+  Remove or alter this notice.
+
+  Run it on private repositories without a valid licence key.
+
+NO WARRANTY
+
+  Provided "as is", without warranty of any kind. It is built to fail open:
+  if a scan errors or the licence check cannot be reached, the check passes.
+  It is a tool for noticing things worth checking, not an audit and not a
+  security certification.
+
+Questions: support@eriksenlabs.com
