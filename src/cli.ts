@@ -286,9 +286,13 @@ ${BOLD}We could not identify a framework here.${RESET}`);
     cannotReadIt('extractor');
   }
 
+  // Keep this list in step with FRAMEWORKS in extract/detect.ts. Supabase
+  // shipped an extractor and was never added here, so for a while every
+  // unsupported project was told we could read less than we can.
   heading('What we can read today');
   console.log(`  Next.js${DIM} - app router: pages, API routes, server actions${RESET}`);
   console.log(`  Cloudflare Pages${DIM} - functions/: onRequest handlers${RESET}`);
+  console.log(`  Supabase${DIM} - edge functions: supabase/functions/*/index.ts${RESET}`);
   console.log(
     `\n${DIM}An extractor is one file. It finds entry points and describes each as a`,
   );

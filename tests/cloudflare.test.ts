@@ -12,9 +12,14 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { scan, byTitle, effectDescriptions } from './helpers.js';
 import { detectFramework } from '../src/extract/detect.js';
 import { fixture } from './helpers.js';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 describe('Cloudflare Pages Functions are found', () => {
   const { framework, triggers } = scan('cfpages');
@@ -227,5 +232,32 @@ describe('an unsupported project is told something useful', () => {
         : [];
     assert.equal(dirs.includes('packages/ui'), false, 'a component library is not an app');
     assert.equal(dirs.includes('packages/helpers'), false, 'functions/ alone proves nothing');
+  });
+});
+
+/**
+ * The list of what we can read has to match what we can actually read.
+ *
+ * The CLI prints "What we can read today" to anyone whose project it cannot
+ * scan, and that list is the only thing a stranger has to judge whether the
+ * tool is worth a second look. Supabase shipped an extractor and was never
+ * added to it, so for several versions every unsupported project was told we
+ * supported two frameworks when we supported three. Found by a Swift
+ * developer asking on a launch day whether his project was covered.
+ *
+ * Reading the source is deliberate: the list is console output with no return
+ * value, and asserting on the strings is what keeps it honest.
+ */
+describe('the CLI tells the truth about what it supports', () => {
+  test('every framework with an extractor appears in the printed list', () => {
+    const cli = fs.readFileSync(path.join(here, '..', 'src', 'cli.ts'), 'utf8');
+    const list = cli.slice(cli.indexOf('What we can read today'));
+
+    for (const name of ['Next.js', 'Cloudflare Pages', 'Supabase']) {
+      assert.ok(
+        list.includes(name),
+        `${name} has an extractor but is missing from "What we can read today"`,
+      );
+    }
   });
 });
