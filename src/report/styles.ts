@@ -709,6 +709,10 @@ a.wave__item:hover{border-color:var(--accent);color:var(--accent)}
   padding-block:var(--s6) var(--s8);font-size:var(--t-meta);color:var(--ink-muted)}
 .foot strong{color:var(--ink);font-weight:600}
 .foot p+p{margin-top:var(--s3)}
+/* Attribution: set apart by a rule, not by shouting. The link keeps the
+   document's default anchor styling — it does not need its own. */
+.foot__made{margin-top:var(--s5)!important;padding-top:var(--s4);
+  border-top:var(--hair) solid var(--rule)}
 
 /* ── responsive ─────────────────────────────────────────────────────── */
 @media (max-width:48rem){

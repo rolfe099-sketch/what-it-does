@@ -52,8 +52,13 @@ describe('a report carries nothing about the machine that made it', () => {
       const html = reportFor('gapdemo', includeCode);
 
       // Windows drive paths, and POSIX paths under the usual home roots.
+      //
+      // The lookbehind matters: without it `[A-Za-z]:[\\/]` reads the `s://`
+      // of `https://` as a drive letter, so the moment the report carried its
+      // first link this test called it a leaked path. A drive letter is one
+      // letter with a non-letter in front of it; a URL scheme is not.
       const absolute = [
-        /[A-Za-z]:[\\/][^\s"'<>]{2,}/,
+        /(?<![A-Za-z])[A-Za-z]:[\\/][^\s"'<>]{2,}/,
         /\/(?:home|Users|root)\/[^\s"'<>]{2,}/,
       ];
       for (const pattern of absolute) {
@@ -90,4 +95,67 @@ describe('a report carries nothing about the machine that made it', () => {
     const html = reportFor('gapdemo', true);
     assert.match(html, /app\/api\/billing\/route\.ts:\d+/);
   });
+});
+
+/**
+ * The report says who made it, and that must not cost it the promise it makes.
+ *
+ * The footer invites the reader to send this file to a colleague, so it now
+ * names the tool and where to get it — a report that gets forwarded is the
+ * best introduction this thing has, and it was travelling anonymously.
+ *
+ * The constraint is the interesting half. Three paragraphs above the credit,
+ * the same footer claims this file makes no network request of any kind and
+ * tells you to verify it by pulling the plug. An attribution is exactly the
+ * sort of thing that arrives as a logo, a web font or an analytics beacon, so
+ * the shape of it is pinned here: one anchor, nothing that loads.
+ */
+describe('the report says what made it, without phoning home', () => {
+  for (const includeCode of [true, false]) {
+    const label = includeCode ? 'with source excerpts' : 'with --no-code';
+
+    test(`the tool and the command are named, ${label}`, () => {
+      const html = reportFor('gapdemo', includeCode);
+      assert.match(html, /what it does/);
+      assert.match(html, /npx what-it-does/);
+      assert.match(html, /eriksenlabs\.com/);
+    });
+
+    test(`nothing in the report loads from the network, ${label}`, () => {
+      const html = reportFor('gapdemo', includeCode);
+
+      // Anything that would fetch a byte the moment the file is opened.
+      const loaders = [
+        /<img\b/i,
+        /<script\b[^>]*\bsrc=/i,
+        /<link\b[^>]*\bhref=/i,
+        /<iframe\b/i,
+        /@import\b/i,
+        /url\(\s*['"]?https?:/i,
+        /\bfetch\s*\(/,
+        /XMLHttpRequest/,
+        /navigator\.sendBeacon/,
+      ];
+      for (const pattern of loaders) {
+        const hit = html.match(pattern);
+        assert.equal(hit, null, `the report would make a network request: ${hit?.[0]}`);
+      }
+    });
+
+    test(`the only remote reference is a link you have to click, ${label}`, () => {
+      const html = reportFor('gapdemo', includeCode);
+      const remote = [...html.matchAll(/https?:\/\/[^\s"'<>)]+/g)].map((m) => m[0]);
+
+      // Every external URL must sit in an href, never in a src or a CSS url().
+      for (const url of remote) {
+        const i = html.indexOf(url);
+        const before = html.slice(Math.max(0, i - 120), i);
+        assert.match(
+          before,
+          /href="$|href='$/,
+          `${url} is referenced somewhere other than a plain link`,
+        );
+      }
+    });
+  }
 });

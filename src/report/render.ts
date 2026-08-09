@@ -1359,6 +1359,23 @@ ${data.drift ? driftView(data.drift) : ''}
         : 'Every file we found was readable.'
     }</p>
 
+    <!--
+      Who made the thing you are holding.
+
+      The footer above invites you to send this file to someone, and until now
+      it arrived with no indication of what produced it or where to get it.
+      A report that gets forwarded to a colleague is the best introduction
+      this tool has, and it was travelling anonymously.
+
+      A plain link, and nothing else: no image, no font, no beacon. The claim
+      three paragraphs up is that this file makes no network request of any
+      kind, and that has to stay true.
+    -->
+    <p class="foot__made">Made by <strong>what it does</strong> — one command,
+    free, MIT licensed: <code>npx what-it-does</code>. It reads a codebase
+    without running it and reports every way in.
+    <a href="https://eriksenlabs.com/#what-it-does">eriksenlabs.com</a></p>
+
   </div>
 </footer>
 
