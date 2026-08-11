@@ -31,6 +31,18 @@ export interface SnapshotGap {
   summary: string;
   /** "app/api/x/route.ts:12" — flattened, since a snapshot is transport. */
   source: string;
+  /**
+   * How strongly the finding is meant. 'likely' means we could see and nothing
+   * was checking; 'possible' means something blocked the view — middleware we
+   * cannot resolve, an import we could not follow — and the summary says which.
+   *
+   * The HTML report has always shown this and `--json` dropped it, so anything
+   * built on the machine-readable output could not tell a firm finding from a
+   * hedged one. That is the single most important qualifier on a finding to
+   * lose. Safe to add: gaps are compared by `kind::summary`, so an older
+   * snapshot without the field still diffs cleanly against a newer one.
+   */
+  confidence?: string;
 }
 
 export interface SnapshotBehaviour {
@@ -62,6 +74,7 @@ export function snapshot(behaviours: Behaviour[]): Snapshot {
         kind: g.kind,
         summary: g.summary,
         source: `${g.source.file}:${g.source.line}`,
+        confidence: g.confidence,
       })),
     })),
   };
