@@ -172,3 +172,59 @@ describe('the AI SDK is recognised', () => {
     assert.match(call.description, /costs money/);
   });
 });
+
+/**
+ * Endpoints that are the front door.
+ *
+ * Found by scanning 284 public repositories and then reading what came back.
+ * The unprotected-destructive rule fired 131 times across that corpus, and a
+ * hand-check of a random sample turned up registration and OTP-send endpoints
+ * reported as having "no visible check on who is asking". True, and useless:
+ * those cannot be behind a check, because they are what a person uses before
+ * they have an identity.
+ *
+ * Every application with users has a signup route, so the finding was drifting
+ * toward "this app has users" — and under fail-on-new it would have broken a
+ * customer's build over their registration handler.
+ *
+ * This never surfaced earlier because the precision work had only been done on
+ * projects where nothing was reported at all. Zero findings is a perfect
+ * false-positive rate that proves nothing. These three cases are the corpus
+ * boiled down: two that must stay silent, one that must still fire.
+ */
+describe('an endpoint that is the authentication is not missing it', () => {
+  test('a registration route is not reported', () => {
+    const { behaviours } = scan('gapdemo');
+    const register = behaviours.find((b) => b.trigger.source.file.includes('auth/register'));
+    assert.ok(register, 'the registration fixture should be found');
+    assert.equal(
+      register!.gaps.some((g) => g.kind === 'unprotected-destructive'),
+      false,
+      'a signup endpoint cannot check who is asking — that is what it is for',
+    );
+  });
+
+  test('a send-one-time-code route is not reported', () => {
+    const { behaviours } = scan('gapdemo');
+    const verify = behaviours.find((b) => b.trigger.source.file.includes('workflow/verify'));
+    assert.ok(verify, 'the verify fixture should be found');
+    assert.equal(
+      verify!.gaps.some((g) => g.kind === 'unprotected-destructive'),
+      false,
+    );
+  });
+
+  /**
+   * The control. Suppressing noise is only worth anything if the signal
+   * survives it — a rule that reports nothing would pass both tests above.
+   */
+  test('a genuinely unguarded delete is still reported', () => {
+    const { behaviours } = scan('gapdemo');
+    const purge = behaviours.find((b) => b.trigger.source.file.includes('admin/purge'));
+    assert.ok(purge, 'the purge fixture should be found');
+    assert.ok(
+      purge!.gaps.some((g) => g.kind === 'unprotected-destructive'),
+      'an unguarded delete with no auth segment in its path must still fire',
+    );
+  });
+});

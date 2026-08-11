@@ -106,6 +106,74 @@ export function detectGaps(behaviour: Behaviour, context: GapContext): Gap[] {
  * Server actions get the stronger wording because they are directly callable
  * over HTTP — a fact that surprises people who assume a form is the only way in.
  */
+/**
+ * Route segments that mean "this endpoint is the front door".
+ *
+ * Registration, sign-in, OTP, password reset and OAuth callbacks all have to
+ * be reachable by someone who has not identified themselves yet — that is
+ * their entire job. Saying "no visible check on who is asking" about a signup
+ * route is technically true and completely useless.
+ */
+const PUBLIC_BY_DESIGN = new Set([
+  'auth',
+  'login',
+  'signin',
+  'sign-in',
+  'logout',
+  'signout',
+  'sign-out',
+  'register',
+  'registration',
+  'signup',
+  'sign-up',
+  'join',
+  'verify',
+  'verification',
+  'otp',
+  'confirm',
+  'forgot',
+  'forgot-password',
+  'reset',
+  'reset-password',
+  'callback',
+  'magic-link',
+  'session',
+  'csrf',
+]);
+
+/**
+ * Found by scanning 284 public repositories and then reading the findings.
+ *
+ * The rule fired 131 times across that corpus, and hand-checking a sample
+ * turned up registration endpoints and OTP-send endpoints reported as
+ * unprotected. Every application with users has those, so the finding was
+ * close to "this app has a signup form" — noise that would have failed a
+ * customer's build under fail-on-new.
+ *
+ * It never showed up before because the accuracy work had only ever been done
+ * on codebases where nothing was reported. A tool that finds nothing has a
+ * perfect false-positive rate and has proved nothing.
+ *
+ * Matched on whole path segments rather than substrings, so `/api/users` is
+ * not read as containing "use", and dynamic segments are unwrapped so
+ * `[...nextauth]` still counts as auth.
+ */
+function isPublicByDesign(behaviour: Behaviour): boolean {
+  // source is a SourceRef, not a string — the file path is what carries the
+  // route shape for a server action, which has no urlPath at all.
+  const candidates = [behaviour.trigger.urlPath ?? '', behaviour.trigger.source?.file ?? ''];
+  for (const candidate of candidates) {
+    const segments = candidate
+      .toLowerCase()
+      .split(/[/\\]/)
+      .map((s) => s.replace(/\.[a-z]+$/, '')) // route.ts -> route
+      .map((s) => s.replace(/^\[\.{0,3}|\]$/g, '')) // [id], [...nextauth]
+      .filter(Boolean);
+    if (segments.some((s) => PUBLIC_BY_DESIGN.has(s))) return true;
+  }
+  return false;
+}
+
 function unprotectedDestructive(behaviour: Behaviour, context: GapContext): Gap[] {
   const kind = behaviour.trigger.kind;
   if (kind !== 'api-route' && kind !== 'server-action') return [];
@@ -115,6 +183,9 @@ function unprotectedDestructive(behaviour: Behaviour, context: GapContext): Gap[
 
   const hasAuthCheck = behaviour.effects.some((e) => e.isAuthCheck);
   if (hasAuthCheck) return [];
+
+  // Some endpoints ARE the authentication, so they cannot be behind it.
+  if (isPublicByDesign(behaviour)) return [];
 
   const what = consequential[0].description;
 

@@ -1,6 +1,6 @@
 {
   "name": "what-it-does",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Shows you what software you didn't write actually does, and tells you when that changes. Runs locally; your code never leaves the machine.",
   "type": "module",
   "license": "MIT",
