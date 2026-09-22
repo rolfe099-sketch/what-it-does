@@ -26,7 +26,15 @@ const WORK = process.argv[3];
 const sample = JSON.parse(fs.readFileSync('sample.json', 'utf8'));
 
 const CONSEQUENTIAL = new Set(['deletes-data', 'takes-payment', 'changes-access']);
-const results = [];
+
+// A run that dies partway (the machine sleeps, the session ends) picks up where
+// it stopped: results.json is written after every repository, so its length is
+// exactly how many of the sample have been done. The sample is fixed, so the
+// rows already there are the rows this run would have produced.
+const results = fs.existsSync('results.json')
+  ? JSON.parse(fs.readFileSync('results.json', 'utf8'))
+  : [];
+if (results.length > 0) console.log(`resuming after ${results.length}/${sample.length}`);
 
 const strip = (s) => String(s || '').replace(/\x1b\[[0-9;]*m/g, '');
 
@@ -97,6 +105,7 @@ function summarise(scans) {
 fs.mkdirSync(WORK, { recursive: true });
 
 for (const [i, repo] of sample.entries()) {
+  if (i < results.length) continue;
   const dir = path.join(WORK, 'r' + i);
   const row = { band: repo.band, stars: repo.stars, full_name: repo.full_name, outcome: null };
 
