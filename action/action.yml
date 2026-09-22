@@ -7,12 +7,6 @@ branding:
   color: 'green'
 
 inputs:
-  licence-key:
-    description: >-
-      Your licence key, for private repositories. Free on public repositories,
-      where this can be left empty. Store it as a repository secret.
-    required: false
-    default: ''
   path:
     description: 'Directory to scan, if the application is not at the repository root.'
     required: false
@@ -43,20 +37,17 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    # The base branch, scanned first. fetch-depth 0 because the committer count
-    # needs history — a shallow clone reports one author and undercounts every
-    # team on the planet.
+    # The base branch, scanned first. Shallow is fine: nothing here reads git
+    # history any more.
     - name: Check out the base branch
       uses: actions/checkout@v4
       with:
         ref: ${{ github.event.pull_request.base.sha }}
-        fetch-depth: 0
         path: .wid-base
 
     - name: Check out this branch
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0
         path: .wid-head
 
     - name: Set up Node
@@ -75,11 +66,8 @@ runs:
       id: compare
       shell: bash
       env:
-        WID_LICENCE_KEY: ${{ inputs.licence-key }}
         WID_PATH: ${{ inputs.path }}
         WID_FAIL_ON_NEW: ${{ inputs.fail-on-new }}
-        WID_REPO_PRIVATE: ${{ github.event.repository.private }}
-        WID_REPO: ${{ github.repository }}
       run: node "$GITHUB_ACTION_PATH/run.mjs"
 
     - name: Comment on the pull request

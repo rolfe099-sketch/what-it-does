@@ -3,13 +3,13 @@
  *
  * Scans the base branch, scans this one, and reports the difference in
  * behaviour rather than in lines. Everything runs inside the customer's own
- * runner: their code is read by a CLI on a machine they control, and the only
- * request that ever leaves is an optional licence check carrying a key and
- * nothing else.
+ * runner: their code is read by a CLI on a machine they control, and nothing
+ * ever leaves it. The scanner makes no network requests, and neither does
+ * this.
  *
  * ── Two rules that outrank everything ──────────────────────────────────────
  *
- * FAIL OPEN. If the licence check cannot be reached, if a scan errors, if
+ * FAIL OPEN. If a scan errors, if
  * anything at all goes sideways, this must not break somebody's build. A tool
  * that turns a green pipeline red because OUR service hiccupped is a tool
  * removed from every workflow in the company that afternoon. The only red this
@@ -24,22 +24,9 @@ import { execFileSync, execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-// Its own module, and the one piece of this with a test that talks to the real
-// API. See licence.mjs for what went wrong when it did not have one.
-import { checkLicence } from './licence.mjs';
-
 const OUT = process.env.GITHUB_OUTPUT;
-const KEY = (process.env.WID_LICENCE_KEY || '').trim();
 const SUBPATH = process.env.WID_PATH || '.';
 const FAIL_ON_NEW = (process.env.WID_FAIL_ON_NEW || 'false') === 'true';
-const IS_PRIVATE = (process.env.WID_REPO_PRIVATE || 'false') === 'true';
-
-/** Tier boundaries, by active committers. Mirrors the published prices. */
-const TIERS = [
-  { name: 'Team', max: 10, price: '$49/mo' },
-  { name: 'Business', max: 50, price: '$149/mo' },
-  { name: 'Scale', max: Infinity, price: '$399/mo' },
-];
 
 /**
  * The run page, not the log.
@@ -99,57 +86,6 @@ function run(command, args, options = {}) {
     stdio: ['ignore', 'pipe', 'pipe'],
     ...options,
   });
-}
-
-/**
- * Active committers, from the customer's own git history.
- *
- * This is the meter, and it is deliberately one they can run themselves:
- * `git shortlog -sn --since=90.days`. Someone who has not committed in three
- * months is not producing drift for this to catch, so they are not counted.
- * Nothing about it is reported anywhere — the number is computed here, used
- * here, and discarded.
- */
-function activeCommitters(repoDir) {
-  try {
-    const out = execSync('git log --since=90.days --format=%ae', {
-      cwd: repoDir,
-      encoding: 'utf8',
-      maxBuffer: 32 * 1024 * 1024,
-    });
-    const emails = new Set(
-      out
-        .split('\n')
-        .map((line) => line.trim().toLowerCase())
-        .filter(Boolean)
-        // Bots are not people and must not push anyone into a higher tier.
-        .filter((email) => !/(\[bot\]|noreply@github\.com|actions@github\.com)/.test(email)),
-    );
-    return emails.size;
-  } catch {
-    return 0; // unknown; never used to charge anyone more
-  }
-}
-
-function tierFor(committers) {
-  return TIERS.find((t) => committers <= t.max) ?? TIERS[TIERS.length - 1];
-}
-
-/** One quiet line, in the comment they are already reading. */
-function licenceNote(committers, tier, licence) {
-  if (!IS_PRIVATE) return ''; // public repositories are free, always
-
-  if (licence.verdict === 'absent') {
-    return `\n\n<sub>This is a private repository with **${committers} active ${
-      committers === 1 ? 'committer' : 'committers'
-    }** in the last 90 days — the ${tier.name} tier, ${tier.price}. Running unlicensed. → https://eriksenlabs.com/#what-it-does</sub>`;
-  }
-  if (licence.verdict === 'rejected') {
-    return `\n\n<sub>The licence key on this repository was not recognised. → https://eriksenlabs.com/#what-it-does</sub>`;
-  }
-  // 'granted', and 'unreachable' — which is our problem to notice on the run
-  // page, not theirs to read about on their pull request.
-  return '';
 }
 
 async function main() {
@@ -249,31 +185,14 @@ async function main() {
     return;
   }
 
-  const committers = activeCommitters(head);
-  const tier = tierFor(committers);
-  const licence = await checkLicence(KEY);
-
-  const body = `<!-- what-it-does -->\n${markdown.trim()}${licenceNote(committers, tier, licence)}`;
+  const body = `<!-- what-it-does -->\n${markdown.trim()}`;
   setOutput('markdown', body);
-
-  // Named out loud, because the whole class of bug this replaced was one where
-  // "checked and fine" and "never actually checked" printed the same thing.
-  const LICENCE_LINE = {
-    absent: 'Licence: none configured — private repositories need a key.',
-    granted: 'Licence: valid.',
-    rejected: 'Licence: rejected by Polar.',
-    unreachable: 'Licence: could not be checked, so the check passed anyway.',
-  };
 
   summary([
     '## what it does',
     '',
     `Read **${baseWays}** ways in on the base branch and **${headWays}** on this one.`,
     `**${changed}** changed, **${newFindings}** new ${newFindings === 1 ? 'finding' : 'findings'}.`,
-    '',
-    IS_PRIVATE
-      ? `${LICENCE_LINE[licence.verdict]}${licence.detail ? ` (${licence.detail})` : ''}`
-      : 'Public repository — free, no licence needed.',
     '',
     'The comparison was posted as a pull request comment.',
   ]);

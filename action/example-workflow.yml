@@ -37,11 +37,6 @@ jobs:
     steps:
       - uses: rolfe099-sketch/what-it-does/action@v1
         with:
-          # Free on public repositories — leave this out entirely there.
-          # On a private repository, add the key as a repository secret:
-          # Settings → Secrets and variables → Actions → New repository secret
-          licence-key: ${{ secrets.WHAT_IT_DOES_KEY }}
-
           # Where the application is, if it is not at the repository root.
           # e.g. apps/web for a monorepo, or . for a plain project.
           path: .

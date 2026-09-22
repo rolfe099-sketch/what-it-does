@@ -26,14 +26,10 @@ jobs:
       pull-requests: write
     steps:
       - uses: rolfe099-sketch/what-it-does/action@v1
-        with:
-          # Free on public repositories. Required for private ones.
-          licence-key: ${{ secrets.WHAT_IT_DOES_KEY }}
 ```
 
 | Input | Default | |
 |---|---|---|
-| `licence-key` | `''` | Free on public repositories; required for private ones |
 | `path` | `.` | Where the application is, if not the repository root |
 | `fail-on-new` | `false` | Fail the check when a finding appears that was not there before |
 | `comment` | `true` | Post the result as a pull request comment |
@@ -43,24 +39,19 @@ with the result instead.
 
 ## What it does to your repository
 
-Nothing. Your code is read by a CLI running on your own runner, and the only
-request that leaves is an optional licence check carrying a key and nothing
-else. The scanner itself makes no network calls at all.
+Nothing. Your code is read by a CLI running on your own runner, and nothing
+leaves it. Neither the scanner nor this Action makes a network call.
 
-It **fails open**. If a scan errors, if the licence check is unreachable, if
+It **fails open**. If a scan errors, if
 anything goes sideways — the check passes and says so in the log. The only red
 it ever produces is a finding you asked it to fail on with `fail-on-new`.
 
 It is also quiet: no comment when nothing changed, and the existing comment is
 edited rather than a new one added on every push.
 
-## Pricing
+## Licence
 
-Free on public repositories and always will be. Private repositories are priced
-on **active committers** — anyone who has committed in the last 90 days,
-counted from your own git history inside your own runner by the equivalent of
-`git shortlog -sn --since=90.days`. Nothing is reported anywhere.
-
-Team ≤10 · $49/mo — Business ≤50 · $149/mo — Scale · $399/mo
+MIT, the same as the scanner. Free on every repository, public or private,
+with nothing to configure and no key.
 
 https://eriksenlabs.com/#what-it-does
