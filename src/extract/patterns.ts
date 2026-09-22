@@ -748,6 +748,24 @@ export const AUTH_CHECK_NAME_PATTERNS: RegExp[] = [
   // Direct fetches of the current actor
   /^(requireAuth|requireUser|requireSession|getCurrentUser|getAuthUser|getUserOrThrow|protect|authorize|authorise)$/i,
   /**
+   * Predicates: hasCronSecret, hasPostCronSecret, isAuthorized, isAdmin,
+   * hasValidToken. Found by scanning 292 public repositories and reading the
+   * findings: five of thirty hand-checked "unprotected" endpoints were cron
+   * routes guarded by exactly this shape, all reported at 'likely' confidence.
+   *
+   * Deliberately narrower than the verb list above. `has`/`is` are so common
+   * that pairing them with `key` or `access` matches isKeyboard and
+   * isAccessible, and silencing a real finding is worse than missing a guard.
+   */
+  /^(has|is)\w*(secret|auth|token|session|permission|apikey|api_key|signature|admin|owner)/i,
+  /**
+   * A method literally named `verify`, called on something: receiver.verify(),
+   * svix.verify(), webhook.verify(). Only the last segment of a call chain is
+   * matched here, so the pattern above misses these — `verify` alone has no
+   * suffix word to satisfy it. Nobody calls .verify() on a request by accident.
+   */
+  /^verify$/i,
+  /**
    * Deno's own JWT verification, which is how a Supabase Edge Function checks
    * a caller by hand when verify_jwt is switched off in config.toml. Reaching
    * for it is a deliberate act — nobody calls verify() by accident.

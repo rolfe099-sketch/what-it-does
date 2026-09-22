@@ -297,7 +297,13 @@ function findNodeInRange(
  * heuristic, but on the CONDITION rather than on the enclosing function, which
  * is both narrower and closer to the thing being decided.
  */
-const IDENTITY = /\b(session|user|auth|token|actor|account|member|role|perm|permission|admin|owner|caller|viewer|credential|apikey|api_key|signed|login|logged)/i;
+/*
+  secret, bearer, signature, authorization, timingSafeEqual, hmac: the shape of
+  a shared-secret check — a request header compared against an environment
+  variable, then an early 401. Missing these is how a cron endpoint behind
+  `if (!header.startsWith('Bearer ')) return 401` got reported as unguarded.
+*/
+const IDENTITY = /\b(session|user|auth|token|actor|account|member|role|perm|permission|admin|owner|caller|viewer|credential|apikey|api_key|signed|login|logged|secret|bearer|signature|authorization|timingsafeequal|hmac)/i;
 
 /**
  * A guard that is specifically about permission.

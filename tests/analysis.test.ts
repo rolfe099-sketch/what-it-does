@@ -228,3 +228,53 @@ describe('an endpoint that is the authentication is not missing it', () => {
     );
   });
 });
+
+/**
+ * A shared secret is a check on who is asking.
+ *
+ * Hand-verifying thirty findings from the 292-repository study turned up five
+ * false positives, and every one was the same shape: a cron or webhook
+ * endpoint guarded by comparing a request header against an environment
+ * secret. The scanner recognises sessions, `auth()`, Supabase, and guards
+ * named verifyX/requireX — and had no idea that `hasCronSecret(request)` or
+ * `header.startsWith('Bearer ')` followed by a 401 means the same thing. All
+ * five were reported at 'likely' confidence. Confident and wrong.
+ *
+ * Three fixtures are the corpus boiled down: a named predicate, an inline
+ * bearer compare, a `.verify()` on a receiver. The fourth is the control —
+ * same folder, same `process.env`, no check — and it must keep firing.
+ * Widening auth detection can only ever silence findings, which is the
+ * expensive direction to be wrong in.
+ */
+describe('a shared-secret check is a check on who is asking', () => {
+  const unprotected = (b: { gaps: { kind: string }[] }) =>
+    b.gaps.some((g) => g.kind === 'unprotected-destructive');
+
+  test('a named predicate like hasCronSecret guards the endpoint', () => {
+    const { behaviours } = scan('gapdemo');
+    const purge = behaviours.find((b) => b.trigger.source.file.includes('cron/purge'));
+    assert.ok(purge, 'the cron/purge fixture should be found');
+    assert.equal(unprotected(purge!), false, 'hasCronSecret(request) is a guard');
+  });
+
+  test('an inline bearer-token compare guards the endpoint', () => {
+    const { behaviours } = scan('gapdemo');
+    const rotate = behaviours.find((b) => b.trigger.source.file.includes('cron/rotate'));
+    assert.ok(rotate, 'the cron/rotate fixture should be found');
+    assert.equal(unprotected(rotate!), false, 'Bearer header vs env secret with timingSafeEqual is a guard');
+  });
+
+  test('a .verify() call on a signature receiver guards the endpoint', () => {
+    const { behaviours } = scan('gapdemo');
+    const hook = behaviours.find((b) => b.trigger.source.file.includes('webhooks/upstash'));
+    assert.ok(hook, 'the upstash fixture should be found');
+    assert.equal(unprotected(hook!), false, 'receiver.verify({signature}) is a guard');
+  });
+
+  test('a cron route that reads env and checks nothing is still reported', () => {
+    const { behaviours } = scan('gapdemo');
+    const open = behaviours.find((b) => b.trigger.source.file.includes('cron/unguarded'));
+    assert.ok(open, 'the control fixture should be found');
+    assert.ok(unprotected(open!), 'process.env and a /cron/ path are not a guard');
+  });
+});
